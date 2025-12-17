@@ -19,7 +19,7 @@ __all__ = ["add", "create"]
 logger = structlog.get_logger()
 
 
-def create(registry_path: Path):
+def create(registry_path: Path) -> None:
     """Create a registry at `registry_path`.
 
     Parameters
@@ -49,7 +49,7 @@ def create(registry_path: Path):
             path=str(registry_path.resolve()),
         )
     # Add config file
-    conf_path = Path(ds.path) / "registry-config.yml"
+    conf_path = ds.pathobj / "registry-config.yml"
     conf_path.touch()
     ds.save(
         conf_path,
