@@ -40,6 +40,8 @@ dependencies = [
     "lazy_loader==0.4",
     "structlog>=25.0.0,<26.0.0",
     "ruamel.yaml>=0.17,<0.19",
+    "h5io@git+https://github.com/juaml/h5io@600d9e25c625b11520d86b08f9f0b761f71b0542",
+    "tqdm>=4.66.1,<4.67.0",
 ]
 dynamic = ["version"]
 
