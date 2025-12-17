@@ -7,12 +7,14 @@ import logging
 import logging.config
 import pathlib
 import sys
+from pathlib import Path
 
 import click
 import datalad
 import structlog
 
 from . import _functions as cli_func
+from . import _utils as cli_utils
 
 
 __all__ = ["cli", "create"]
@@ -148,6 +150,44 @@ def create(
     _set_log_config(verbose)
     try:
         cli_func.create(registry_path)
+    except RuntimeError as err:
+        click.echo(f"{err}", err=True)
+    else:
+        click.echo("Success")
+
+
+@cli.command
+@click.argument(
+    "yaml_path",
+    type=click.Path(
+        exists=True,
+        readable=True,
+        writable=True,
+        dir_okay=False,
+        path_type=pathlib.Path,
+    ),
+    metavar="<yaml>",
+)
+@click.option(
+    "-r",
+    "--registry",
+    default=None,
+    type=cli_utils.PathOrURL,
+    metavar="<registry>",
+    help="Path to registry; if not passed, use current directory",
+)
+@click.option("-v", "--verbose", count=True, type=int)
+def add(
+    yaml_path: click.Path,
+    registry: click.Path,
+    verbose: int,
+) -> None:
+    """Add feature(s) registry."""
+    _set_log_config(verbose)
+    try:
+        cli_func.add(
+            yaml_path, registry if registry is not None else Path(".")
+        )
     except RuntimeError as err:
         click.echo(f"{err}", err=True)
     else:
