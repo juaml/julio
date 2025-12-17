@@ -39,6 +39,7 @@ dependencies = [
     "datalad>=1.0.0,<1.3.0",
     "lazy_loader==0.4",
     "structlog>=25.0.0,<26.0.0",
+    "ruamel.yaml>=0.17,<0.19",
 ]
 dynamic = ["version"]
 
