@@ -5,6 +5,8 @@
 
 import pathlib
 import re
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -305,6 +307,74 @@ def _generate_feature_yaml(meta: dict) -> dict:
 
 
 def _process_hdf5(data: dict, ds: dl.Dataset) -> dl.Dataset:
+def _generate_meta_yaml(
+    meta: dict,
+    data: dict,
+    md5: str,
+    mappings: dict,
+    dataset_display_name: str | None,
+) -> dict:
+    """Generate a feature meta YAML from data.
+
+    Parameters
+    ----------
+    meta : dict
+        Feature metadata as dictionary.
+    data : dict
+        Feature data as dictionary.
+    md5 : str
+        Feature MD5.
+    mappings : dict
+        Registry mappings as dictionary.
+    dataset_display_name : str or None
+        Dataset display name.
+
+    Returns
+    -------
+    dict
+        Feature meta YAML.
+
+    """
+    y: dict[str, Any] = {}
+    y["md5"] = md5
+    y["name"] = meta["name"]
+    y["added_on"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    ndata = data["data"]
+    y["data"] = {
+        "shape": ndata.shape,
+        "size": ndata.size,
+        "dtype": str(ndata.dtype),
+        "nbytes": sys.getsizeof(ndata),
+    }
+    y["samples"] = len(data["element"])
+    mm = {}
+    for k, v in meta["marker"].items():
+        if k not in ("class", "on", "name"):
+            mm[k] = v
+    y["marker_meta"] = mm
+    sm = {}
+    for k, v in data.items():
+        if k not in ("data", "element"):
+            sm[k] = v
+    y["storage_meta"] = sm
+    tags = []
+    for i in mappings["datagrabbers"]:
+        if meta["datagrabber"]["class"] == i["class"]:
+            tags.extend(i["tags"])
+            y["dataset"] = {
+                "name": i["class"],
+                "description": i["description"],
+                "display_name": i["display_name"]
+                if dataset_display_name is None
+                else dataset_display_name,
+            }
+    for i in mappings["markers"]:
+        if meta["marker"]["class"] == i["class"]:
+            tags.extend(i["tags"])
+    y["tags"] = list(set(tags))
+    return y
+
+
     """Read and write HDF5 data.
 
     Parameters
@@ -330,9 +400,6 @@ def _process_hdf5(data: dict, ds: dl.Dataset) -> dl.Dataset:
     feature_dir = ds.pathobj / "features"
     feature_dir.mkdir(exist_ok=True)
     for k, v in tqdm(metadata.items(), desc="Processing features"):
-        # Metadata
-        meta_path = feature_dir / f"feature-{k}-meta.yaml"
-        yaml.dump(v, stream=meta_path.open("w"))
         # YAML
         yaml_data = _generate_feature_yaml(v)
         yaml_path = feature_dir / f"feature-{k}.yml"
@@ -348,6 +415,17 @@ def _process_hdf5(data: dict, ds: dl.Dataset) -> dl.Dataset:
             slash="error",
             use_json=False,
         )
+        # Metadata
+        config_path = ds.pathobj / "registry-config.yml"
+        meta_data = _generate_meta_yaml(
+            meta=v,
+            data=data,
+            md5=k,
+            mappings=yaml.load(stream=config_path.open("r"))["mappings"],
+            dataset_display_name=dataset_display_name,
+        )
+        meta_path = feature_dir / f"feature-{k}-meta.yml"
+        yaml.dump(meta_data, stream=meta_path.open("w"))
     log.debug("Processed HDF5 file")
     return ds
 
