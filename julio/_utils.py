@@ -436,7 +436,11 @@ def _process_hdf5(
     return ds
 
 
-def process_features(yaml_path: Path, ds: dl.Dataset) -> dl.Dataset:
+def process_features(
+    yaml_path: Path,
+    ds: dl.Dataset,
+    dataset_display_name: str | None,
+) -> dl.Dataset:
     """Parse the junifer YAML and add features to the dataset.
 
     Parameters
@@ -445,6 +449,8 @@ def process_features(yaml_path: Path, ds: dl.Dataset) -> dl.Dataset:
         Path to the junifer YAML.
     ds : dl.Dataset
         Dataset to add features to.
+    dataset_display_name : str or None
+        Dataset display name.
 
     Returns
     -------
