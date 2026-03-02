@@ -306,7 +306,6 @@ def _generate_feature_yaml(meta: dict) -> dict:
     return y
 
 
-def _process_hdf5(data: dict, ds: dl.Dataset) -> dl.Dataset:
 def _generate_meta_yaml(
     meta: dict,
     data: dict,
@@ -375,14 +374,21 @@ def _generate_meta_yaml(
     return y
 
 
+def _process_hdf5(
+    data: dict,
+    ds: dl.Dataset,
+    dataset_display_name: str | None,
+) -> dl.Dataset:
     """Read and write HDF5 data.
 
     Parameters
     ----------
     data : dict
-        Dictionary containing the HDF5 data.
+        Parsed YAML as dictionary.
     ds : dl.Dataset
         Dataset to add features to.
+    dataset_display_name : str or None
+        Dataset display name.
 
     Returns
     -------
@@ -456,10 +462,11 @@ def process_features(yaml_path: Path, ds: dl.Dataset) -> dl.Dataset:
     log.debug("Processing features")
     data = _parse_yaml(yaml_path)
     if data["storage"]["uri"].endswith(".hdf5"):
-        ds = _process_hdf5(data, ds)
-    elif data["storage"]["uri"].endswith(".sqlite"):
-        # TODO(synchon): add support for SQLite
-        pass
+        ds = _process_hdf5(
+            data=data,
+            ds=ds,
+            dataset_display_name=dataset_display_name,
+        )
     else:
         raise RuntimeError(
             "Unsupported storage format extension: "
