@@ -139,11 +139,11 @@ def _make_absolute_path(path: str, base_path: Path) -> str:
     """
     log = logger.bind(cmd="make_absolute_path", path=str(path))
     log.debug("Making path absolute")
-    path = Path(path)
-    if not path.is_absolute():
-        path = base_path / path
+    path_p = Path(path)
+    if not path_p.is_absolute():
+        path_p = base_path / path_p
     log.debug("Made path absolute")
-    return str(path.resolve())
+    return str(path_p.resolve())
 
 
 def _adjust_paths(data: dict, yaml_path: Path) -> dict:
@@ -242,7 +242,7 @@ def _parse_yaml(yaml_path: Path) -> dict:
     # Remove elements key if empty
     if "elements" in contents:
         if contents["elements"] is None:
-            _ = contents.pop("elements")
+            contents.pop("elements")
     log.debug("Parsed junifer YAML")
     return contents
 
