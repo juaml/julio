@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from julio import create
+from julio import add, create
 
 
 def test_create(tmp_path: Path) -> None:
@@ -26,4 +26,25 @@ def test_create(tmp_path: Path) -> None:
     assert config_path.is_file()
     with pytest.raises(RuntimeError):
         create(registry_path)
+    shutil.rmtree(registry_path)
+
+
+def test_add(tmp_path: Path) -> None:
+    """Test feature addition.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = tmp_path / "test_registry"
+    create(registry_path)
+    add(
+        yaml_path=Path(__file__).parent / "feature.yml",
+        registry_path=registry_path,
+        dataset_display_name=None,
+    )
+    f_dir = registry_path / "features"
+    assert f_dir.is_dir()
     shutil.rmtree(registry_path)
