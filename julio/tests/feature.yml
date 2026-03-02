@@ -1,3 +1,5 @@
+workdir: ./junifer-temp
+
 datagrabber:
   kind: DMCC13Benchmark
   types:
