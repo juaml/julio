@@ -59,7 +59,11 @@ def create(registry_path: Path) -> None:
     )
 
 
-def add(yaml_path: Path, registry_path: str | Path) -> None:
+def add(
+    yaml_path: Path,
+    registry_path: str | Path,
+    dataset_display_name: str | None,
+) -> None:
     """Add feature(s) from `yaml_path` to the registry at `registry_path`.
 
     Parameters
@@ -68,6 +72,8 @@ def add(yaml_path: Path, registry_path: str | Path) -> None:
         Path to the junifer YAML.
     registry_path : str or pathlib.Path
         Path to the existing julio registry.
+    dataset_display_name : str or None
+        Dataset display name.
 
     Raises
     ------
@@ -77,7 +83,50 @@ def add(yaml_path: Path, registry_path: str | Path) -> None:
 
     """
     log = logger.bind(
-        cmd="create",
+        cmd="add",
+        path=registry_path if str else str(registry_path.resolve()),
+    )
+    if isinstance(registry_path, str):
+        log.debug("Cloning remote registry")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log.debug(f"Temporary directory created at {tmpdir}")
+            # Clone the remote registry
+            try:
+                ds = dl.clone(
+                    source=registry_path,
+                    path=tmpdir,
+                    on_failure="stop",
+                    result_renderer="disabled",
+                )
+            except IncompleteResultsError as e:
+                raise RuntimeError(
+                    f"Failed to clone dataset: {e.failed}"
+                ) from e
+            else:
+                log.debug("Remote registry cloned successfully")
+            if not is_julio_registry(ds):
+                raise RuntimeError(
+                    f"Dataset at {ds.path} is not a julio registry"
+                )
+            # Add features
+            process_features(yaml_path, ds, dataset_display_name)
+            # Push changes to remote registry
+            try:
+                ds = dl.push(
+                    on_failure="stop",
+                    result_renderer="disabled",
+                )
+            except IncompleteResultsError as e:
+                raise RuntimeError(
+                    f"Failed to push dataset: {e.failed}"
+                ) from e
+            else:
+                log.debug("Pushed changes to remote registry successfully")
+    else:
+        ds = dl.Dataset(registry_path)
+        if not is_julio_registry(ds):
+            raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
+        process_features(yaml_path, ds, dataset_display_name)
         path=registry_path if str else str(registry_path.resolve()),
     )
     if isinstance(registry_path, str):
