@@ -245,15 +245,13 @@ def _parse_yaml(yaml_path: Path) -> dict:
     return contents
 
 
-def _feature_yaml_from_meta(data: dict, feature: str) -> dict:
+def _generate_feature_yaml(meta: dict) -> dict:
     """Generate a feature YAML from metadata.
 
     Parameters
     ----------
-    data : dict
-        Dictionary containing the HDF5 metadata.
-    feature : str
-        MD5 hash of the feature.
+    meta : dict
+        Feature metadata as dictionary.
 
     Returns
     -------
@@ -263,36 +261,36 @@ def _feature_yaml_from_meta(data: dict, feature: str) -> dict:
     """
     y: dict[str, Any] = {}
     y["workdir"] = ""
-    if "with" in data:
-        y["with"] = data["with"].copy()
+    if "with" in meta:
+        y["with"] = meta["with"].copy()
     # Set datagrabber
-    y["datagrabber"] = data["datagrabber"].copy()
+    y["datagrabber"] = meta["datagrabber"].copy()
     a = y["datagrabber"].pop("class")
     y["datagrabber"]["kind"] = a
     if a not in ("PatternDataGrabber", "PatternDataladDataGrabber"):
-        _ = y["datagrabber"].pop("uri")
-        _ = y["datagrabber"].pop("rootdir")
-        _ = y["datagrabber"].pop("patterns")
-        _ = y["datagrabber"].pop("replacements")
-        _ = y["datagrabber"].pop("confounds_format")
-        _ = y["datagrabber"].pop("partial_pattern_ok")
-        for k in data[
+        y["datagrabber"].pop("uri")
+        y["datagrabber"].pop("rootdir")
+        y["datagrabber"].pop("patterns")
+        y["datagrabber"].pop("replacements")
+        y["datagrabber"].pop("confounds_format")
+        y["datagrabber"].pop("partial_pattern_ok")
+        for k in meta[
             "datagrabber"
         ].keys():  # use data instead of y to avoid .copy()
             if k.startswith("datalad"):
-                _ = y["datagrabber"].pop(k)
+                y["datagrabber"].pop(k)
     # Set preprocess
-    if "preprocess" in data:
-        y["preprocess"] = data["preprocess"].copy()
+    if "preprocess" in meta:
+        y["preprocess"] = meta["preprocess"].copy()
         b = y["preprocess"].pop("class")
         y["preprocess"]["kind"] = b
     # Set markers
     y["markers"] = []
-    y["markers"].append(data["marker"].copy())
+    y["markers"].append(meta["marker"].copy())
     c = y["markers"][0].pop("class")
     y["markers"][0]["kind"] = c
     if y["markers"][0]["masks"] is None:
-        _ = y["markers"][0].pop("masks")
+        y["markers"][0].pop("masks")
     # Set storage
     y["storage"] = {
         "kind": "HDF5FeatureStorage",
@@ -300,7 +298,7 @@ def _feature_yaml_from_meta(data: dict, feature: str) -> dict:
     }
     # Set queue
     y["queue"] = {
-        "jobname": data["name"],
+        "jobname": meta["name"],
         "kind": "",
     }
     return y
@@ -336,7 +334,7 @@ def _process_hdf5(data: dict, ds: dl.Dataset) -> dl.Dataset:
         meta_path = feature_dir / f"feature-{k}-meta.yaml"
         yaml.dump(v, stream=meta_path.open("w"))
         # YAML
-        yaml_data = _feature_yaml_from_meta(v, k)
+        yaml_data = _generate_feature_yaml(v)
         yaml_path = feature_dir / f"feature-{k}.yml"
         yaml.dump(yaml_data, stream=yaml_path.open("w"))
         # Data
