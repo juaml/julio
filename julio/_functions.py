@@ -50,7 +50,10 @@ def create(registry_path: Path) -> None:
         )
     # Add config file
     conf_path = ds.pathobj / "registry-config.yml"
-    conf_path.touch()
+    shutil.copy(
+        src=Path(__file__).parent / "registry-config.yml",
+        dst=conf_path,
+    )
     ds.save(
         conf_path,
         message="[julio] add registry configuration",

@@ -1,0 +1,293 @@
+mappings:
+
+  datagrabbers:
+
+    - class: HCP1200
+      display_name: WU-Minn HCP1200
+      tags:
+        - HCP1200
+      description: HCP1200 3T/7T MR scans from young healthy adults twins and non-twin siblings (ages 22-35)
+
+    - class: DataladHCP1200
+      display_name: WU-Minn HCP1200
+      tags:
+        - HCP1200
+      description: HCP1200 3T/7T MR scans from young healthy adults twins and non-twin siblings (ages 22-35)
+
+    - class: DataladAOMICID1000
+      display_name: AOMIC ID1000
+      tags:
+        - AOMIC
+        - ID1000
+      description: Amsterdam Open MRI Collection (AOMIC) ID1000 3T MR scans from 928 participants
+
+    - class: DataladAOMICPIOP1
+      display_name: AOMIC PIOP1
+      tags:
+        - AOMIC
+        - PIOP1
+      description: Amsterdam Open MRI Collection (AOMIC) PIOP1 3T MR scans from 216 participants
+
+    - class: DataladAOMICPIOP2
+      display_name: AOMIC PIOP2
+      tags:
+        - AOMIC
+        - PIOP2
+      description: Amsterdam Open MRI Collection (AOMIC) PIOP2 3T MR scans from 226 participants
+
+    - class: DMCC13Benchmark
+      display_name: DMCC13 Benchmark
+      tags:
+        - DMCC
+      description: Dual Mechanisms of Cognitive Control data for 13 subjects used as a benchmark dataset for comparing preprocessing pipelines
+
+    - class: JuselessDataladAOMICID1000VBM
+      display_name: AOMIC ID1000 VBM
+      tags:
+        - AOMIC
+        - ID1000
+        - CAT
+      description: AOMIC ID1000 VBM data
+
+    - class: JuselessDataladCamCANVBM
+      display_name: CamCAN VBM
+      tags:
+        - CamCAN
+        - CAT
+      description: Cambridge Centre for Ageing Neuroscience (CamCAN) VBM data
+
+    - class: JuselessDataladIXIVBM
+      display_name: IXI VBM
+      tags:
+        - IXI
+        - CAT
+      description: IXI VBM data
+
+    - class: JuselessUCLA
+      display_name: UCLA
+      tags:
+        - UCLA
+      description: UCLA data on juseless.imm7.de
+
+    - class: JuselessDataladUKBVBM
+      display_name: UK Biobank VBM
+      tags:
+        - UK Biobank
+        - CAT
+      description: UK Biobank VBM data, computed using CAT12.8 by Felix
+
+  markers:
+
+    - class: ParcelAggregation
+      display_name: Aggregation
+      tags:
+        - fMRI
+        - Aggregation
+        - Parcellation
+      description: Signal extraction from Region of Interests (ROIs) based on deterministic atlas, computed using specific aggregation function
+
+    - class: SphereAggregation
+      display_name: Aggregation
+      tags:
+        - fMRI
+        - Aggregation
+        - Coordinates
+      description: Signal extraction from Region of Interests (ROIs) based on spherical region around coordinates, computed using specific aggregation function
+
+    - class: MapsAggregation
+      display_name: Aggregation
+      tags:
+        - fMRI
+        - Aggregation
+        - Maps
+      description: Signal extraction from Region of Interests (ROIs) based on probabilistic atlas, computed using specific aggregation function
+
+    - class: FunctionalConnectivityParcels
+      display_name: Functional Connectivity
+      tags:
+        - fMRI
+        - FC
+        - Parcellation
+      description: Functional connectivity computed on parcellations
+
+    - class: FunctionalConnectivitySpheres
+      display_name: Functional Connectivity
+      tags:
+        - fMRI
+        - FC
+        - Coordinates
+      description: Functional connectivity computed on coordinates
+
+    - class: FunctionalConnectivityMaps
+      display_name: Functional Connectivity
+      tags:
+        - fMRI
+        - FC
+        - Maps
+      description: Functional connectivity computed on maps
+
+    - class: ALFFParcels
+      display_name: ALFF / fALFF
+      tags:
+        - fMRI
+        - ALFF/fALFF
+        - Parcellation
+      description: Amplitude of low-frequency fluctuations (ALFF) and fractional ALFF (fALFF) computed on parcellations
+
+    - class: ALFFSpheres
+      display_name: ALFF / fALFF
+      tags:
+        - fMRI
+        - ALFF/fALFF
+        - Coordinates
+      description: Amplitude of low-frequency fluctuations (ALFF) and fractional ALFF (fALFF) computed on coordinates
+
+    - class: ALFFMaps
+      display_name: ALFF / fALFF
+      tags:
+        - fMRI
+        - ALFF/fALFF
+        - Maps
+      description: Amplitude of low-frequency fluctuations (ALFF) and fractional ALFF (fALFF) computed on maps
+
+    - class: ReHoParcels
+      display_name: Regional Homogeneity
+      tags:
+        - fMRI
+        - ReHo
+        - Parcellation
+      description: Regional homogeneity computed on parcellations
+
+    - class: ReHoSpheres
+      display_name: Regional Homogeneity
+      tags:
+        - fMRI
+        - ReHo
+        - Coordinates
+      description: Regional homogeneity computed on coordinates
+
+    - class: ReHoMaps
+      display_name: Regional Homogeneity
+      tags:
+        - fMRI
+        - ReHo
+        - Maps
+      description: Regional homogeneity computed on maps
+
+    - class: EdgeCentricFCParcels
+      display_name: Edge Functional Connectivity
+      tags:
+        - fMRI
+        - Edge FC
+        - Parcellation
+      description: Edge-centric functional connectivity computed on parcellation
+
+    - class: EdgeCentricFCSpheres
+      display_name: Edge Functional Connectivity
+      tags:
+        - fMRI
+        - Edge FC
+        - Coordinates
+      description: Edge-centric functional connectivity computed on coordinates
+
+    - class: EdgeCentricFCMaps
+      display_name: Edge Functional Connectivity
+      tags:
+        - fMRI
+        - Edge FC
+        - Maps
+      description: Edge-centric functional connectivity computed on maps
+
+    - class: CrossParcellationFC
+      display_name: Cross-parcellation functional connectivity
+      tags:
+        - fMRI
+        - FC
+        - Parcellation
+      description: Cross-parcellation functional connectivity computed on two parcellations
+
+    - class: TemporalSNRParcels
+      display_name: Temporal signal-to-noise ratio
+      tags:
+        - fMRI
+        - tSNR
+        - Parcellation
+      description: Temporal signal-to-noise (tSNR) ratio computed on parcellation
+
+    - class: TemporalSNRSpheres
+      display_name: Temporal signal-to-noise ratio
+      tags:
+        - fMRI
+        - tSNR
+        - Coordinates
+      description: Temporal signal-to-noise (tSNR) ratio computed on coordinates
+
+    - class: TemporalSNRMaps
+      display_name: Temporal signal-to-noise ratio
+      tags:
+        - fMRI
+        - tSNR
+        - Maps
+      description: Temporal signal-to-noise (tSNR) ratio computed on maps
+
+    - class: RSSETSMarker
+      display_name: Root sum of squares of edgewise timeseries
+      tags:
+        - fMRI
+        - Parcellation
+      description: Root sum of squares of edgewise timeseries computed on parcellation
+
+    - class: HurstExponent
+      display_name: Hurst Exponent of timeseries
+      tags:
+        - fMRI
+        - Entropy
+        - Parcellation
+      description: Entropy measure using Hurst Exponent of timeseries
+
+    - class: MultiscaleEntropyAUC
+      display_name: AUC of Multiscale Entropy of timeseries
+      tags:
+        - fMRI
+        - Entropy
+        - Parcellation
+      description: Area under the curve of Multiscale Entropy measure of timeseries
+
+    - class: PermEntropy
+      display_name: Permutation Entropy of timeseries
+      tags:
+        - fMRI
+        - Entropy
+        - Parcellation
+      description: Permutation Entropy measure of timeseries
+
+    - class: RangeEntropy
+      display_name: Range Entropy of timeseries
+      tags:
+        - fMRI
+        - Entropy
+        - Parcellation
+      description: Range Entropy measure of timeseries
+
+    - class: RangeEntropyAUC
+      display_name: AUC of Range Entropy of timeseries
+      tags:
+        - fMRI
+        - Entropy
+        - Parcellation
+      description: Area under the curve of Range Entropy measure of timeseries
+
+    - class: SampleEntropy
+      display_name: Sample Entropy of timeseries
+      tags:
+        - fMRI
+        - Entropy
+        - Parcellation
+      description: Sample Entropy measure of timeseries
+
+    - class: BrainPrint
+      display_name: BrainPrint measure
+      tags:
+        - sMRI
+        - BrainPrint
+      description: Computed BrainPrint measure from FreeSurfer-derived surface data
