@@ -176,17 +176,28 @@ def create(
     metavar="<registry>",
     help="Path to registry; if not passed, use current directory",
 )
+@click.option(
+    "-d",
+    "--dataset-display-name",
+    default=None,
+    type=str,
+    metavar="<dataset-display-name>",
+    help="Dataset display name; if not passed, will use the name from YAML",
+)
 @click.option("-v", "--verbose", count=True, type=int)
 def add(
     yaml_path: click.Path,
     registry: click.Path,
+    dataset_display_name: str,
     verbose: int,
 ) -> None:
     """Add feature(s) registry."""
     _set_log_config(verbose)
     try:
         cli_func.add(
-            yaml_path, registry if registry is not None else Path(".")
+            yaml_path=yaml_path,
+            registry_path=registry if registry is not None else Path("."),
+            dataset_display_name=dataset_display_name,
         )
     except RuntimeError as err:
         click.echo(f"{err}", err=True)
