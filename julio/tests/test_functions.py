@@ -6,6 +6,7 @@
 import shutil
 from pathlib import Path
 
+import datalad.api as dl
 import pytest
 
 from julio import add, create
@@ -47,4 +48,5 @@ def test_add(tmp_path: Path) -> None:
     )
     f_dir = registry_path / "features"
     assert f_dir.is_dir()
+    dl.drop(".", reckless="kill", dataset=dl.Dataset(registry_path))
     shutil.rmtree(registry_path)
