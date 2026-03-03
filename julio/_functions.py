@@ -130,33 +130,3 @@ def add(
         if not is_julio_registry(ds):
             raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
         process_features(yaml_path, ds, dataset_display_name)
-        path=registry_path if str else str(registry_path.resolve()),
-    )
-    if isinstance(registry_path, str):
-        log.debug("Cloning remote registry")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            log.debug(f"Temporary directory created at {tmpdir}")
-            try:
-                ds = dl.clone(
-                    source=registry_path,
-                    path=tmpdir,
-                    on_failure="stop",
-                    result_renderer="disabled",
-                )
-            except IncompleteResultsError as e:
-                raise RuntimeError(
-                    f"Failed to clone dataset: {e.failed}"
-                ) from e
-            else:
-                log.debug("Remote registry cloned successfully")
-            if not is_julio_registry(ds):
-                raise RuntimeError(
-                    f"Dataset at {ds.path} is not a julio registry"
-                )
-            process_features(yaml_path, ds)
-            # TODO: push changes to remote
-    else:
-        ds = dl.Dataset(registry_path)
-        if not is_julio_registry(ds):
-            raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
-        process_features(yaml_path, ds)
