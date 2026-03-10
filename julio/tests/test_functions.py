@@ -50,3 +50,10 @@ def test_add(tmp_path: Path) -> None:
     assert f_dir.is_dir()
     dl.drop(".", reckless="kill", dataset=dl.Dataset(registry_path))
     shutil.rmtree(registry_path)
+    # Check for invalid dataset
+    with pytest.raises(RuntimeError):
+        add(
+            yaml_path=Path(__file__).parent / "feature.yml",
+            registry_path=tmp_path,
+            dataset_display_name=None,
+        )
