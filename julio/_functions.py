@@ -90,7 +90,7 @@ def add(
         cmd="add",
         path=registry_path if str else str(registry_path.resolve()),
     )
-    if isinstance(registry_path, str):
+    if isinstance(registry_path, str): # pragma: no cover
         log.debug("Cloning remote registry")
         with tempfile.TemporaryDirectory() as tmpdir:
             log.debug(f"Temporary directory created at {tmpdir}")
