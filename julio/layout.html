@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Julio Registry{% block title %}{% endblock %}</title>
+    <!-- TODO(synchon): use customized components -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+    {% block head %}{% endblock %}
+    <link href="julio.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body class="antialiased md:subpixel-antialiased bg-base-100">
+    <div class="navbar bg-base-100 shadow-sm mb-4">
+      <div class="flex-1">
+        <a class="btn btn-ghost">
+          <img src="logo.png" alt="julio logo" class="h-[4rem] w-auto">
+        </a>
+      </div>
+      <div class="flex justify-end">
+        <label class="toggle text-base-content">
+  			  <input type="checkbox" value="dark" class="theme-controller" />
+
+  			  <svg aria-label="sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></g></svg>
+
+  			  <svg aria-label="moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g stroke-linejoin="round" stroke-linecap="round" stroke-width="2" fill="none" stroke="currentColor"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></g></svg>
+
+        </label>
+      </div>
+    </div>
+    {% block content %}{% endblock %}
+  </body>
+  <footer class="footer footer-center p-4">
+    <aside>
+      <p>Powered by <a href="https://pypi.org/project/julio/" class="link">julio</a> v{{version}}</p>
+    </aside>
+  </footer>
+</html>
+
+<script>{% block script %}{% endblock %}</script>
