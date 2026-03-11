@@ -551,6 +551,7 @@ dependencies = [
     { name = "h5io" },
     { name = "lazy-loader" },
     { name = "ruamel-yaml" },
+    { name = "ruamel-yaml-string" },
     { name = "structlog" },
     { name = "tqdm" },
 ]
@@ -571,6 +572,7 @@ requires-dist = [
     { name = "lazy-loader", specifier = "==0.4" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "ruamel-yaml", specifier = ">=0.17,<0.19" },
+    { name = "ruamel-yaml-string", specifier = ">=0.1.1" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "structlog", specifier = ">=25.0.0,<26.0.0" },
     { name = "towncrier", marker = "extra == 'dev'" },
@@ -1226,6 +1228,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b9/17/4e01a602693b572149f92c983c1f25bd608df02c3f5cf50fd1f94e124a59/ruamel_yaml_clib-0.2.15-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:542d77b72786a35563f97069b9379ce762944e67055bea293480f7734b2c7e5e", size = 765882, upload-time = "2025-11-16T16:13:49.526Z" },
     { url = "https://files.pythonhosted.org/packages/9f/17/7999399081d39ebb79e807314de6b611e1d1374458924eb2a489c01fc5ad/ruamel_yaml_clib-0.2.15-cp314-cp314-win32.whl", hash = "sha256:424ead8cef3939d690c4b5c85ef5b52155a231ff8b252961b6516ed7cf05f6aa", size = 102567, upload-time = "2025-11-16T16:13:50.78Z" },
     { url = "https://files.pythonhosted.org/packages/d2/67/be582a7370fdc9e6846c5be4888a530dcadd055eef5b932e0e85c33c7d73/ruamel_yaml_clib-0.2.15-cp314-cp314-win_amd64.whl", hash = "sha256:ac9b8d5fa4bb7fd2917ab5027f60d4234345fd366fe39aa711d5dca090aa1467", size = 122847, upload-time = "2025-11-16T16:13:51.807Z" },
+]
+
+[[package]]
+name = "ruamel-yaml-string"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ruamel-yaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/47/fa7c06b8f9946fc9192cb4d944367f31197715915f5e71363909e8c35eb7/ruamel.yaml.string-0.1.1.tar.gz", hash = "sha256:7a7aedcc055d45c004d38b756f58474ebefb106851f4ce56ce58415709784350", size = 12678, upload-time = "2023-05-02T05:37:18.085Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/2a/b508237a7fcceab8a8724405480eb55d527523419c9dbcde369f954656ad/ruamel.yaml.string-0.1.1-py3-none-any.whl", hash = "sha256:eb146bcb42b116216638034a434e9cf3ae2a5d3933aa37183a9854b5f3ff42de", size = 4118, upload-time = "2023-05-02T05:37:20.332Z" },
 ]
 
 [[package]]

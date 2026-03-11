@@ -10,7 +10,7 @@ __all__ = ["yaml"]
 
 
 # Configure YAML class once for further use
-yaml = YAML()
+yaml = YAML(typ=["rt", "string"])
 yaml.default_flow_style = False
 yaml.allow_unicode = True
 yaml.indent(mapping=2, sequence=4, offset=2)
