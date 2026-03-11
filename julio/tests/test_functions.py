@@ -35,8 +35,11 @@ def test_create(tmp_path: Path) -> None:
     "yml, expect",
     [
         ("valid.yml", nullcontext()),
-        ("invalid_store.yml", pytest.raises(RuntimeError)),
         ("valid_extra.yml", nullcontext()),
+        ("invalid_store.yml", pytest.raises(RuntimeError)),
+        ("invalid_mandatory_section.yml", pytest.raises(RuntimeError)),
+        ("invalid_section.yml", pytest.raises(RuntimeError)),
+        ("missing_storage_uri.yml", pytest.raises(RuntimeError)),
     ],
 )
 def test_add(tmp_path: Path, yml: str, expect: AbstractContextManager) -> None:
