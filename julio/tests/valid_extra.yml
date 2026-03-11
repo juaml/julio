@@ -1,0 +1,38 @@
+workdir: ./junifer-temp
+
+with:
+  - math
+
+datagrabber:
+  kind: PatternDataladDataGrabber
+  uri: https://github.com/OpenNeuroDatasets/ds003720.git
+  types:
+    - BOLD
+  patterns:
+    BOLD:
+      pattern: "{subject}/func/{subject}_task-{task}_{session}_bold.nii"
+      space: MNI152NLin2009cAsym
+  replacements:
+    - subject
+    - task
+    - session
+
+preprocess:
+  - kind: Smoothing
+    using: nilearn
+    on:
+      - BOLD
+    smoothing_params:
+      fwhm: fast
+
+markers:
+  - kind: FunctionalConnectivitySpheres
+    coords: DMNBuckner
+    radius: 5.0
+    name: fc_spheres
+    masks:
+      - compute_epi_mask
+
+storage:
+  kind: HDF5FeatureStorage
+  uri: ./store.hdf5
