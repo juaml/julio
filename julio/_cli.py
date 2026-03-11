@@ -203,3 +203,44 @@ def add(
         click.echo(f"{err}", err=True)
     else:
         click.echo("Success")
+
+
+@cli.command
+@click.option(
+    "-o",
+    "--output",
+    default=None,
+    type=click.Path(
+        readable=True,
+        writable=True,
+        dir_okay=True,
+        path_type=pathlib.Path,
+    ),
+    metavar="<output>",
+    help="Path to output directory; if not passed, use `$PWD/build`",
+)
+@click.option(
+    "-r",
+    "--registry",
+    default=None,
+    type=cli_utils.PathOrURL,
+    metavar="<registry>",
+    help="Path to registry; if not passed, use current directory",
+)
+@click.option("-v", "--verbose", count=True, type=int)
+def build(
+    output: click.Path,
+    registry: click.Path,
+    verbose: int,
+) -> None:
+    """Build static site for feature(s) registry."""
+    _set_log_config(verbose)
+    try:
+        cli_func.build(
+            output if output is not None else Path("./build"),
+            registry if registry is not None else Path("."),
+        )
+    except RuntimeError as err:
+        click.echo(f"{err}", err=True)
+    else:
+        click.echo("Success")
