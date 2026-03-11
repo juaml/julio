@@ -4,6 +4,7 @@
 # License: AGPL
 
 import shutil
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 import datalad.api as dl
@@ -30,30 +31,43 @@ def test_create(tmp_path: Path) -> None:
     shutil.rmtree(registry_path)
 
 
-def test_add(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "yml, expect",
+    [
+        ("valid.yml", nullcontext()),
+        ("invalid_store.yml", pytest.raises(RuntimeError)),
+        ("valid_extra.yml", nullcontext()),
+    ],
+)
+def test_add(tmp_path: Path, yml: str, expect: AbstractContextManager) -> None:
     """Test feature addition.
 
     Parameters
     ----------
     tmp_path : Path
         Pytest fixture that provides a temporary directory.
+    yml : str
+        The parametrized YAML file name.
+    expect : typing.ContextManager
+        The parametrized ContextManager object.
 
     """
     registry_path = tmp_path / "test_registry"
     create(registry_path)
-    add(
-        yaml_path=Path(__file__).parent / "feature.yml",
-        registry_path=registry_path,
-        dataset_display_name=None,
-    )
-    f_dir = registry_path / "features"
-    assert f_dir.is_dir()
-    dl.drop(".", reckless="kill", dataset=dl.Dataset(registry_path))
-    shutil.rmtree(registry_path)
+    with expect:
+        add(
+            yaml_path=Path(__file__).parent / yml,
+            registry_path=registry_path,
+            dataset_display_name=None,
+        )
+        f_dir = registry_path / "features"
+        assert f_dir.is_dir()
+        dl.drop(".", reckless="kill", dataset=dl.Dataset(registry_path))
+        shutil.rmtree(registry_path)
     # Check for invalid dataset
     with pytest.raises(RuntimeError):
         add(
-            yaml_path=Path(__file__).parent / "feature.yml",
+            yaml_path=Path(__file__).parent / yml,
             registry_path=tmp_path,
             dataset_display_name=None,
         )
