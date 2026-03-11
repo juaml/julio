@@ -11,7 +11,7 @@ import datalad.api as dl
 import structlog
 from datalad.support.exceptions import IncompleteResultsError
 
-from ._utils import is_julio_registry, process_features
+from ._utils import build_site, is_julio_registry, process_features
 
 
 __all__ = ["add", "create"]
@@ -131,3 +131,54 @@ def add(
         if not is_julio_registry(ds):
             raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
         process_features(yaml_path, ds, dataset_display_name)
+
+
+def build(output: Path, registry_path: str | Path) -> None:
+    """Build static site at `output` for registry at `registry_path`.
+
+    Parameters
+    ----------
+    output : pathlib.Path
+        Path to the output directory.
+    registry_path : str or pathlib.Path
+        Path to the existing julio registry.
+
+    Raises
+    ------
+    RuntimeError
+        If there is a problem building the static site or
+        if the dataset is not a julio registry.
+
+    """
+    log = logger.bind(
+        cmd="build",
+        path=registry_path if str else str(registry_path.resolve()),
+    )
+    if isinstance(registry_path, str):  # pragma: no cover
+        log.debug("Cloning remote registry")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log.debug(f"Temporary directory created at {tmpdir}")
+            # Clone the remote registry
+            try:
+                ds = dl.clone(
+                    source=registry_path,
+                    path=tmpdir,
+                    on_failure="stop",
+                    result_renderer="disabled",
+                )
+            except IncompleteResultsError as e:
+                raise RuntimeError(
+                    f"Failed to clone dataset: {e.failed}"
+                ) from e
+            else:
+                log.debug("Remote registry cloned successfully")
+            if not is_julio_registry(ds):
+                raise RuntimeError(
+                    f"Dataset at {ds.path} is not a julio registry"
+                )
+            build_site(output, ds)
+    else:
+        ds = dl.Dataset(registry_path)
+        if not is_julio_registry(ds):
+            raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
+        build_site(output, ds)
