@@ -1,7 +1,10 @@
-workdir: ./junifer-temp
+workdir:
+  path: ./junifer-temp
+  cleanup: true
 
 with:
   - math
+  - ./extra.py
 
 datagrabber:
   kind: PatternDataladDataGrabber
