@@ -74,7 +74,7 @@ regex = re.compile(
 pattern = re.compile(regex)
 
 
-class PathOrURLParamType(click.ParamType):
+class PathOrURLParamType(click.ParamType):  # pragma : no cover
     name = "path_or_url"
 
     def convert(self, value, param, ctx):
