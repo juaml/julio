@@ -1,22 +1,5 @@
 div.dt-container {
-
-	/* div.dt-length { */
-	/* 	label { */
-	/* 		font-weight: normal; */
-	/* 		text-align: left; */
-	/* 		white-space: nowrap; */
-	/* 	} */
-
-	/* } */
-
 	div.dt-search {
-
-		/* label { */
-		/* 	font-weight: normal; */
-		/* 	white-space: nowrap; */
-		/* 	text-align: left; */
-		/* } */
-
 		input {
       background-color: var(--color-base-100);
       border-color: var(--input-color);
