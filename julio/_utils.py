@@ -14,6 +14,7 @@ import click
 import datalad.api as dl
 import structlog
 from h5io import read_hdf5, write_hdf5
+from junifer.api import generate_yaml, parse_yaml
 from junifer.utils import yaml
 from tqdm import tqdm
 
@@ -120,75 +121,6 @@ def is_julio_registry(ds: dl.Dataset) -> bool:
     return False
 
 
-def _make_absolute_path(path: str, base_path: Path) -> str:
-    """Make a path absolute.
-
-    Parameters
-    ----------
-    path : str
-        Path to make absolute.
-    base_path : Path
-        Base path to use.
-
-    Returns
-    -------
-    str
-        Absolute path.
-
-    """
-    log = logger.bind(cmd="make_absolute_path", path=str(path))
-    log.debug("Making path absolute")
-    path_p = Path(path)
-    if not path_p.is_absolute():
-        path_p = base_path / path_p
-    log.debug("Made path absolute")
-    return str(path_p.resolve())
-
-
-def _adjust_paths(data: dict, yaml_path: Path) -> dict:
-    """Adjust paths in the data dictionary.
-
-    Parameters
-    ----------
-    data : dict
-        Data dictionary to adjust.
-    yaml_path : Path
-        Path to the YAML file.
-
-    Returns
-    -------
-    dict
-        Adjusted data dictionary.
-
-    """
-    log = logger.bind(cmd="adjust_paths", path=str(yaml_path.resolve()))
-    log.debug("Adjusting paths")
-    if "workdir" in data:
-        if isinstance(data["workdir"], str):
-            data["workdir"] = _make_absolute_path(
-                data["workdir"], yaml_path.parent
-            )
-        else:
-            data["workdir"]["path"] = _make_absolute_path(
-                data["workdir"]["path"], yaml_path.parent
-            )
-    if "with" in data:
-        if not isinstance(data["with"], list):
-            data["with"] = list(data["with"])
-        mods = []
-        for w in data["with"]:
-            if w.endswith(".py"):
-                mods.append(_make_absolute_path(w, yaml_path.parent))
-            else:
-                mods.append(w)
-        data["with"] = mods
-    data["storage"]["uri"] = _make_absolute_path(
-        data["storage"]["uri"], yaml_path.parent
-    )
-    log.debug("Adjusted paths")
-    return data
-
-
 def _parse_yaml(yaml_path: Path) -> dict:
     """Parse the junifer YAML.
 
@@ -211,7 +143,7 @@ def _parse_yaml(yaml_path: Path) -> dict:
     """
     log = logger.bind(cmd="parse_yaml", path=str(yaml_path.resolve()))
     log.debug("Parsing junifer YAML")
-    contents = yaml.load(yaml_path)
+    contents = parse_yaml(yaml_path)
     # Validate mandatory sections
     mandatory = ("workdir", "datagrabber", "markers", "storage")
     for s in mandatory:
@@ -231,78 +163,13 @@ def _parse_yaml(yaml_path: Path) -> dict:
         raise RuntimeError(
             f"`uri` missing from `storage` section in {yaml_path.resolve()!s}"
         )
-    # Replace relative file paths with absolute
-    contents = _adjust_paths(contents, yaml_path)
     # Validate storage file exists
     if not Path(contents["storage"]["uri"]).exists():
         raise RuntimeError(
             f"Storage file does not exist: {contents['storage']['uri']}"
         )
-    # Remove elements key if empty
-    if "elements" in contents:
-        if contents["elements"] is None:
-            contents.pop("elements")
     log.debug("Parsed junifer YAML")
     return contents
-
-
-def _generate_feature_yaml(meta: dict) -> dict:
-    """Generate a feature YAML from metadata.
-
-    Parameters
-    ----------
-    meta : dict
-        Feature metadata as dictionary.
-
-    Returns
-    -------
-    dict
-        Feature YAML.
-
-    """
-    y: dict[str, Any] = {}
-    y["workdir"] = ""
-    if "with" in meta:
-        y["with"] = meta["with"].copy()
-    # Set datagrabber
-    y["datagrabber"] = meta["datagrabber"].copy()
-    a = y["datagrabber"].pop("class")
-    y["datagrabber"]["kind"] = a
-    if a not in ("PatternDataGrabber", "PatternDataladDataGrabber"):
-        y["datagrabber"].pop("uri")
-        y["datagrabber"].pop("rootdir")
-        y["datagrabber"].pop("patterns")
-        y["datagrabber"].pop("replacements")
-        y["datagrabber"].pop("confounds_format")
-        y["datagrabber"].pop("partial_pattern_ok")
-        for k in meta[
-            "datagrabber"
-        ].keys():  # use data instead of y to avoid .copy()
-            if k.startswith("datalad"):
-                y["datagrabber"].pop(k)
-    # Set preprocess
-    if "preprocess" in meta:
-        y["preprocess"] = meta["preprocess"].copy()
-        b = y["preprocess"].pop("class")
-        y["preprocess"]["kind"] = b
-    # Set markers
-    y["markers"] = []
-    y["markers"].append(meta["marker"].copy())
-    c = y["markers"][0].pop("class")
-    y["markers"][0]["kind"] = c
-    if y["markers"][0]["masks"] is None:
-        y["markers"][0].pop("masks")
-    # Set storage
-    y["storage"] = {
-        "kind": "HDF5FeatureStorage",
-        "uri": "",
-    }
-    # Set queue
-    y["queue"] = {
-        "jobname": meta["name"],
-        "kind": "",
-    }
-    return y
 
 
 def _generate_meta_yaml(
@@ -405,8 +272,13 @@ def _process_hdf5(
     feature_dir = ds.pathobj / "features"
     feature_dir.mkdir(exist_ok=True)
     for k, v in tqdm(metadata.items(), desc="Processing features"):
+        # Add "with" and "queue" section if present in data
+        if "with" in data:
+            v["with"] = data["with"].copy()
+        if "queue" in data:
+            v["queue"] = data["queue"].copy()
         # YAML
-        yaml_data = _generate_feature_yaml(v)
+        yaml_data = generate_yaml(v)
         yaml_path = feature_dir / f"feature-{k}.yml"
         yaml.dump(yaml_data, stream=yaml_path.open("w"))
         # Data
