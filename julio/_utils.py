@@ -14,9 +14,8 @@ import click
 import datalad.api as dl
 import structlog
 from h5io import read_hdf5, write_hdf5
+from junifer.utils import yaml
 from tqdm import tqdm
-
-from ._yaml import yaml
 
 
 __all__ = ["PathOrURL", "is_julio_registry", "process_features"]
