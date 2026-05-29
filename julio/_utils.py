@@ -3,10 +3,10 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
+import datetime as dt
 import pathlib
 import re
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -203,7 +203,7 @@ def _generate_meta_yaml(
     y: dict[str, Any] = {}
     y["md5"] = md5
     y["name"] = meta["name"]
-    y["added_on"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    y["added_on"] = dt.datetime.now(tz=dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
     ndata = data["data"]
     y["data"] = {
         "shape": ndata.shape,
