@@ -282,11 +282,11 @@ def _process_hdf5(
         yaml_path = feature_dir / f"feature-{k}.yml"
         yaml.dump(yaml_data, stream=yaml_path.open("w"))
         # Data
-        data = read_hdf5(fname=data["storage"]["uri"], title=k, slash="ignore")
+        h5_data = read_hdf5(fname=data["storage"]["uri"], title=k, slash="ignore")
         data_path = feature_dir / f"feature-{k}.h5"
         write_hdf5(
             fname=str(data_path.resolve()),
-            data=data,
+            data=h5_data,
             overwrite=True,
             title=k,
             slash="error",
@@ -296,7 +296,7 @@ def _process_hdf5(
         config_path = ds.pathobj / "registry-config.yml"
         meta_data = _generate_meta_yaml(
             meta=v,
-            data=data,
+            data=h5_data,
             md5=k,
             mappings=yaml.load(stream=config_path.open("r"))["mappings"],
             dataset_display_name=dataset_display_name,
