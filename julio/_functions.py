@@ -181,4 +181,5 @@ def build(output: Path, registry_path: str | Path) -> None:
         ds = dl.Dataset(registry_path)
         if not is_julio_registry(ds):
             raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
+        dl.unlock(path=".", dataset=ds)
         build_site(output, ds)
