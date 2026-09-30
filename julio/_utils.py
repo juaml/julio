@@ -3,6 +3,7 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
+import io
 import datetime as dt
 import glob
 import pathlib
@@ -418,22 +419,23 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
     (output / "index.html").write_text(
         tem_idx.render(features=fs, version=version("julio")),
     )
+    buf = io.StringIO()
     for f in fs:
+        buf.seek(0)
         md5 = f["md5"]
-        (output / f"{md5}.html").write_text(
-            tem_feature.render(
-                feature=f,
-                yaml=yaml.dumps(
-                    yaml.load(
-                        stream=(
-                            ds.pathobj / "features" / f"feature-{md5}.yml"
-                        ).open("r")
-                    ),
-                ),
-                version=version("julio"),
-                dataset=resolved_ds_path,
-            ),
+        yl = yaml.load(
+            stream=(
+                ds.pathobj / "features" / f"feature-{md5}.yml"
+            ).open("r")
         )
+        yaml.dump(yl, stream=buf)
+        tem_render = tem_feature.render(
+            feature=f,
+            yaml=buf.getvalue(),
+            version=version("julio"),
+            dataset=resolved_ds_path,
+        )
+        (output / f"{md5}.html").write_text(tem_render)
     # Copy JS
     shutil.copy(Path(__file__).parent / "index.js", output / "index.js")
     shutil.copy(Path(__file__).parent / "feature.js", output / "feature.js")
