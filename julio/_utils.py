@@ -3,9 +3,9 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
-import io
 import datetime as dt
 import glob
+import io
 import pathlib
 import re
 import shutil
@@ -296,7 +296,9 @@ def _process_hdf5(
         yaml_path = feature_dir / f"feature-{k}.yml"
         yaml.dump(yaml_data, stream=yaml_path.open("w"))
         # Data
-        h5_data = read_hdf5(fname=data["storage"]["uri"], title=k, slash="ignore")
+        h5_data = read_hdf5(
+            fname=data["storage"]["uri"], title=k, slash="ignore"
+        )
         data_path = feature_dir / f"feature-{k}.h5"
         write_hdf5(
             fname=str(data_path.resolve()),
@@ -424,9 +426,7 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
         buf.seek(0)
         md5 = f["md5"]
         yl = yaml.load(
-            stream=(
-                ds.pathobj / "features" / f"feature-{md5}.yml"
-            ).open("r")
+            stream=(ds.pathobj / "features" / f"feature-{md5}.yml").open("r")
         )
         yaml.dump(yl, stream=buf)
         tem_render = tem_feature.render(
