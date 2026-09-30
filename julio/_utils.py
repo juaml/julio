@@ -237,6 +237,15 @@ def _generate_meta_yaml(
                 if dataset_display_name is None
                 else dataset_display_name,
             }
+    # Default for unknown datagrabber
+    if y.get("dataset") is None:
+        y["dataset"] = {
+            "name": meta["datagrabber"]["class"],
+            "description": "",
+            "display_name": meta["datagrabber"]["class"]
+            if dataset_display_name is None
+            else dataset_display_name,
+        }
     for i in mappings["markers"]:
         if meta["marker"]["class"] == i["class"]:
             tags.extend(i["tags"])
