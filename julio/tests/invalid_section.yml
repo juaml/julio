@@ -1,0 +1,26 @@
+invalid:
+
+workdir: ./junifer-temp
+
+datagrabber:
+  kind: DMCC13Benchmark
+  types:
+    - BOLD
+  sessions:
+    - ses-wave1bas
+  tasks:
+    - Rest
+  phase_encodings:
+    - AP
+  runs:
+    - "1"
+
+markers:
+  - kind: FunctionalConnectivitySpheres
+    coords: DMNBuckner
+    radius: 5.0
+    name: fc_spheres
+
+storage:
+  kind: HDF5FeatureStorage
+  uri: ./store.hdf5
