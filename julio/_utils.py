@@ -282,7 +282,9 @@ def _process_hdf5(
         yaml_path = feature_dir / f"feature-{k}.yml"
         yaml.dump(yaml_data, stream=yaml_path.open("w"))
         # Data
-        h5_data = read_hdf5(fname=data["storage"]["uri"], title=k, slash="ignore")
+        h5_data = read_hdf5(
+            fname=data["storage"]["uri"], title=k, slash="ignore"
+        )
         data_path = feature_dir / f"feature-{k}.h5"
         write_hdf5(
             fname=str(data_path.resolve()),
