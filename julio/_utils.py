@@ -129,7 +129,7 @@ def is_julio_registry(ds: dl.Dataset) -> bool:
         True if the dataset is a julio registry, False otherwise.
 
     """
-    if (ds.pathobj / "registry-config.yml").is_file():
+    if (ds.pathobj / "registry-config.yaml").is_file():
         return True
     return False
 
@@ -382,7 +382,7 @@ def _process_hdf5(
             raise RuntimeError(
                 f"Cannot add the features in {storage_path!s}: {e}"
             ) from e
-    config_path = ds.pathobj / "registry-config.yml"
+    config_path = ds.pathobj / "registry-config.yaml"
     with config_path.open("r") as f:
         mappings = yaml.load(f)["mappings"]
     feature_dir = ds.pathobj / "features"
@@ -391,17 +391,17 @@ def _process_hdf5(
     for feature_md5, meta in tqdm(
         features.items(), desc="Processing features"
     ):
-        meta_path = feature_dir / f"feature-{feature_md5}-meta.yml"
+        meta_path = feature_dir / f"feature-{feature_md5}-meta.yaml"
         if meta_path.exists():
             log.info(f"Feature {feature_md5} already in registry, skipping")
             continue
         # YAML
-        with (feature_dir / f"feature-{feature_md5}.yml").open("w") as f:
+        with (feature_dir / f"feature-{feature_md5}.yaml").open("w") as f:
             yaml.dump(feature_yamls[feature_md5], stream=f)
         # Data
         data = storage.read(feature_md5=feature_md5)
         _write_feature_hdf5(
-            path=feature_dir / f"feature-{feature_md5}.h5",
+            path=feature_dir / f"feature-{feature_md5}.hdf5",
             feature_md5=feature_md5,
             meta=meta,
             data=data,

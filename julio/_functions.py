@@ -50,9 +50,9 @@ def create(registry_path: Path) -> None:
             path=str(registry_path.resolve()),
         )
     # Add config file
-    conf_path = ds.pathobj / "registry-config.yml"
+    conf_path = ds.pathobj / "registry-config.yaml"
     shutil.copy(
-        src=Path(__file__).parent / "registry-config.yml",
+        src=Path(__file__).parent / "registry-config.yaml",
         dst=conf_path,
     )
     ds.save(
