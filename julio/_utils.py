@@ -4,7 +4,6 @@
 # License: AGPL
 
 import glob
-import io
 import pathlib
 import re
 import shutil
@@ -439,43 +438,42 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
         output=str(output.resolve()),
     )
     log.debug("Building static site")
+    feature_dir = ds.pathobj / "features"
     # Gather available meta files
     fs = []
-    for f in glob.iglob(
-        str((ds.pathobj / "features" / "*-meta.yaml").resolve())
-    ):
-        meta = yaml.load(Path(f))
-        fs.append(meta)
+    for f in sorted(glob.iglob(str((feature_dir / "*-meta.yaml").resolve()))):
+        with Path(f).open("r") as stream:
+            fs.append(yaml.load(stream))
     # Load templates
     tem_idx = JINJA_ENV.get_template("index.html")
     tem_feature = JINJA_ENV.get_template("feature.html")
-    # Resolve dataset path once and use later
-    resolved_ds_path = ""
-    for s in dl.siblings(dataset=ds):
-        # If origin is found, use that else set default
+    # The URL to clone the registry: the one of origin, if any
+    clone_url = None
+    for s in dl.siblings(dataset=ds, result_renderer="disabled"):
         if s["name"] == "origin":
-            resolved_ds_path = s["path"]
+            clone_url = s["url"]
             break
-        if s["name"] == "here":
-            resolved_ds_path = s["path"]
-    # Write HTML files
-    output.mkdir(exist_ok=True)
-    (output / "index.html").write_text(
-        tem_idx.render(features=fs, version=version("julio")),
-    )
-    buf = io.StringIO()
-    for f in fs:
-        buf.seek(0)
-        md5 = f["md5"]
-        yl = yaml.load(
-            stream=(ds.pathobj / "features" / f"feature-{md5}.yaml").open("r")
+    if clone_url is None:
+        log.warning(
+            "Registry has no `origin` sibling, using its local path to clone "
+            "it in the download instructions"
         )
-        yaml.dump(yl, stream=buf)
+        clone_url = str(ds.pathobj.resolve())
+    julio_version = version("julio")
+    # Write HTML files
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "index.html").write_text(
+        tem_idx.render(features=fs, version=julio_version),
+    )
+    for f in fs:
+        md5 = f["md5"]
+        # As written by generate_yaml, with the comments
+        feature_yaml = (feature_dir / f"feature-{md5}.yaml").read_text()
         tem_render = tem_feature.render(
             feature=f,
-            yaml=buf.getvalue(),
-            version=version("julio"),
-            dataset=resolved_ds_path,
+            yaml=feature_yaml,
+            version=julio_version,
+            dataset=clone_url,
         )
         (output / f"{md5}.html").write_text(tem_render)
     # Copy JS

@@ -14,7 +14,7 @@ from datalad.support.exceptions import IncompleteResultsError
 from ._utils import build_site, is_julio_registry, process_features
 
 
-__all__ = ["add", "create"]
+__all__ = ["add", "build", "create"]
 
 
 logger = structlog.get_logger()
@@ -152,9 +152,11 @@ def build(output: Path, registry_path: str | Path) -> None:
     """
     log = logger.bind(
         cmd="build",
-        path=registry_path if str else str(registry_path.resolve()),
+        path=registry_path
+        if isinstance(registry_path, str)
+        else str(registry_path.resolve()),
     )
-    if isinstance(registry_path, str):  # pragma: no cover
+    if isinstance(registry_path, str):
         log.debug("Cloning remote registry")
         with tempfile.TemporaryDirectory() as tmpdir:
             log.debug(f"Temporary directory created at {tmpdir}")
@@ -181,5 +183,4 @@ def build(output: Path, registry_path: str | Path) -> None:
         ds = dl.Dataset(registry_path)
         if not is_julio_registry(ds):
             raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
-        dl.unlock(path=".", dataset=ds)
         build_site(output, ds)

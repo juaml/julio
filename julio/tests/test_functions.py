@@ -3,9 +3,12 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
+import html
 import io
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import datalad.api as dl
@@ -17,7 +20,7 @@ from junifer.api import generate_yaml
 from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 
-from julio import add, create
+from julio import add, build, create
 from julio._utils import _data_info, _generate_meta_yaml
 
 
@@ -311,3 +314,127 @@ def test_data_info() -> None:
     info = _data_info([np.zeros((5, 3)), np.zeros((4, 3))])
     assert info["shape"] == []
     assert info["size"] == 27
+
+
+def _registry_with_features(tmp_path: Path) -> Path:
+    """Create a registry with the features of the test storage.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    Returns
+    -------
+    Path
+        Path to the registry.
+
+    """
+    registry_path = tmp_path / "test_registry"
+    create(registry_path)
+    add(
+        yaml_path=TESTS_DIR / "valid.yaml",
+        registry_path=registry_path,
+    )
+    return registry_path
+
+
+def test_build(tmp_path: Path) -> None:
+    """Test static site building.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    output = tmp_path / "site" / "build"
+    build(output=output, registry_path=registry_path)
+    for asset in ("index.js", "feature.js", "julio.css", "logo.png"):
+        assert (output / asset).is_file()
+    md5s = HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features()
+    index = (output / "index.html").read_text()
+    for md5 in md5s:
+        assert f'href="./{md5}.html"' in index
+        page = (output / f"{md5}.html").read_text()
+        # The YAML of the feature, as written by generate_yaml
+        feature_yaml = (
+            registry_path / "features" / f"feature-{md5}.yaml"
+        ).read_text()
+        yaml_block = re.search(r'id="yaml">(.*?)</code>', page, re.DOTALL)
+        assert yaml_block is not None
+        assert html.unescape(yaml_block.group(1)) == feature_yaml
+        # Without origin, the local path is used to clone
+        assert f"datalad clone {registry_path.resolve()!s} registry" in page
+        assert f"datalad get features/feature-{md5}.hdf5" in page
+    # The registry is not changed
+    assert not dl.Dataset(registry_path).repo.dirty
+
+
+def test_build_remote(tmp_path: Path) -> None:
+    """Test static site building for a remote registry.
+
+    The download instructions of the site are followed to read the features.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    output = tmp_path / "build"
+    build(output=output, registry_path=str(registry_path))
+    source = HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5")
+    for md5 in source.list_features():
+        page = html.unescape((output / f"{md5}.html").read_text())
+        commands = re.search(
+            r"language-bash[^>]*>(.*?)</code>", page, re.DOTALL
+        )
+        assert commands is not None
+        user_dir = tmp_path / f"user-{md5}"
+        user_dir.mkdir()
+        cwd = user_dir
+        for command in commands.group(1).splitlines():
+            args = command.removeprefix("$ ").split()
+            if args[0] == "cd":
+                cwd = cwd / args[1]
+            else:
+                # datalad of the environment, which might not be in PATH
+                args[0] = str(Path(sys.executable).parent / args[0])
+                subprocess.run(args, cwd=cwd, check=True, capture_output=True)
+        code = re.search(r"language-python[^>]*>(.*?)</code>", page, re.DOTALL)
+        assert code is not None
+        assert f'feature_md5="{md5}"' in code.group(1)
+        storage = HDF5FeatureStorage(
+            uri=cwd / "features" / f"feature-{md5}.hdf5"
+        )
+        pd.testing.assert_frame_equal(
+            storage.read_df(feature_md5=md5),
+            source.read_df(feature_md5=md5),
+        )
+
+
+def test_build_not_registry(tmp_path: Path) -> None:
+    """Test static site building for a dataset that is not a registry.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    with pytest.raises(RuntimeError, match="not a julio registry"):
+        build(output=tmp_path / "build", registry_path=tmp_path)
+    dl.create(path=tmp_path / "dataset", result_renderer="disabled")
+    with pytest.raises(RuntimeError, match="not a julio registry"):
+        build(
+            output=tmp_path / "build",
+            registry_path=str(tmp_path / "dataset"),
+        )
+    with pytest.raises(RuntimeError, match="Failed to clone"):
+        build(
+            output=tmp_path / "build",
+            registry_path=str(tmp_path / "missing"),
+        )

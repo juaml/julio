@@ -71,6 +71,14 @@
               <div>{{feature.name}}</div>
             </li>
             <li class="list-row">
+              <div class="w-20 md:w-50"><span class="font-semibold">Marker</span></div>
+              <div>{{feature.marker.display_name}} (<code>{{feature.marker.name}}</code>)</div>
+            </li>
+            <li class="list-row">
+              <div class="w-20 md:w-50"><span class="font-semibold">Description</span></div>
+              <div>{{feature.marker.description}}</div>
+            </li>
+            <li class="list-row">
               <div class="w-20 md:w-50"><span class="font-semibold">Added On (in UTC)</span></div>
               <div>{{feature.added_on}}</div>
             </li>
@@ -91,7 +99,7 @@
               <div><code>{{feature.data.dtype}}</code></div>
             </li>
             <li class="list-row">
-              <div class="w-20 md:w-50"><span class="font-semibold">Storage Size (in bytes)</span></div>
+              <div class="w-20 md:w-50"><span class="font-semibold">Data Size (in bytes)</span></div>
               <div><code>{{feature.data.nbytes}}</code></div>
             </li>
             <li class="list-row">
@@ -167,25 +175,17 @@
         <p class="text-lg"> - Install <a href="https://www.datalad.org" class="link">datalad</a> if not installed already.</p>
         <p class="text-lg mb-2"> - Then, clone the dataset locally by:</p>
         <div class="overflow-x-auto bg-base-200 rounded-box w-full">
-          <pre>
-            <code class="language-bash bg-base-200">
-              $ datalad clone {{dataset}}
-              $ cd <path/to/cloned/dir>
-              $ datalad get features/{{feature.md5}}.h5
-            </code>
-          </pre>
+          <pre><code class="language-bash bg-base-200">$ datalad clone {{dataset}} registry
+$ cd registry
+$ datalad get features/feature-{{feature.md5}}.hdf5</code></pre>
         </div>
         <p class="text-lg my-2"> - Finally, extract the feature as a <code>pandas.DataFrame</code> by:</p>
         <div class="overflow-x-auto bg-base-200 rounded-box w-full">
-          <pre>
-            <code class="language-python bg-base-200">
-              from junifer.storage import HDF5FeatureStorage
-              storage = HDF5FeatureStorage("{{feature.md5}}.h5")
-              df = storage.read_df("{{feature.md5}}")
-            </code>
-          </pre>
+          <pre><code class="language-python bg-base-200">from junifer.storage import HDF5FeatureStorage
+
+storage = HDF5FeatureStorage(uri="features/feature-{{feature.md5}}.hdf5")
+df = storage.read_df(feature_md5="{{feature.md5}}")</code></pre>
         </div>
-        </ol>
       </div>
     </div>
   </div>

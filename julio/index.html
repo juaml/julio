@@ -12,6 +12,7 @@
          <tr class="font-medium tracking-tight md:tracking-wide uppercase">
            <th data-dt-order="disable">MD5</th>
            <th>Name</th>
+           <th>Marker</th>
            <th>Dataset</th>
            <th data-dt-order="disable">Tags</th>
            <th>Added on (UTC)</th>
@@ -22,6 +23,7 @@
            <tr>
              <th class="font-mono"><a href="./{{f.md5}}.html" class="link link-hover">{{f.md5}}</a></th>
              <td>{{f.name}}</td>
+             <td>{{f.marker.display_name}}</td>
              <td>{{f.dataset.display_name}}</td>
              <td>
                <div>
