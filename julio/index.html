@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+{% block title %} : index{% endblock %}
+{% block head %}
+  <link href="https://cdn.datatables.net/v/dt/dt-2.3.6/datatables.min.css" rel="stylesheet" integrity="sha384-kl/GL6Bf/pDfgmgFKZ4XzwANesvO6EBSlfZFyztPhoFTDcL7H8rdOAYRXwGyOfCK" crossorigin="anonymous">
+  <script src="https://cdn.datatables.net/v/dt/dt-2.3.6/datatables.min.js" integrity="sha384-18AyDs6cawP/DD9zgSqUrUeo+moSbSkFr4pe43ttGuiPDGYQitDsvTjtrDnVzrZg" crossorigin="anonymous"></script>
+  <script src="index.js"></script>
+{% endblock %}
+{% block content %}
+  <div class="overflow-x-auto rounded-box border border-base-300 bg-base-200 mx-4">
+     <table id="feature-table" class="table">
+       <thead>
+         <tr class="font-medium tracking-tight md:tracking-wide uppercase">
+           <th data-dt-order="disable">MD5</th>
+           <th>Name</th>
+           <th>Dataset</th>
+           <th data-dt-order="disable">Tags</th>
+           <th>Added on (UTC)</th>
+         </tr>
+       </thead>
+       <tbody>
+         {% for f in features %}
+           <tr>
+             <th class="font-mono"><a href="./{{f.md5}}.html" class="link link-hover">{{f.md5}}</a></th>
+             <td>{{f.name}}</td>
+             <td>{{f.dataset.display_name}}</td>
+             <td>
+               <div>
+                 {% for t in f.tags %}
+                   <span class="badge badge-outline badge-info font-mono">{{t}}</span>
+                 {% endfor %}
+               </div>
+             </td>
+             <td>{{f.added_on}}</td>
+           </tr>
+         {% endfor %}
+       </tbody>
+    </table>
+  </div>
+{% endblock %}

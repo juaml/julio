@@ -3,8 +3,12 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
+import glob
+import io
 import pathlib
 import re
+import shutil
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -12,6 +16,7 @@ import click
 import datalad.api as dl
 import structlog
 from h5io import write_hdf5
+from jinja2 import Environment, PackageLoader, select_autoescape
 from junifer.api import generate_yaml, parse_yaml
 from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
@@ -409,3 +414,75 @@ def process_features(
         )
     log.debug("Processed features", added=len(added))
     return ds
+
+
+JINJA_ENV = Environment(
+    loader=PackageLoader("julio", package_path=""),
+    autoescape=select_autoescape(),
+)
+
+
+def build_site(output: Path, ds: dl.Dataset) -> None:
+    """Build the static site.
+
+    Parameters
+    ----------
+    output : Path
+        Path to the output directory.
+    ds : dl.Dataset
+        Dataset of the site.
+
+    """
+    log = logger.bind(
+        cmd="build_site",
+        registry=str(ds.pathobj.resolve()),
+        output=str(output.resolve()),
+    )
+    log.debug("Building static site")
+    # Gather available meta files
+    fs = []
+    for f in glob.iglob(
+        str((ds.pathobj / "features" / "*-meta.yaml").resolve())
+    ):
+        meta = yaml.load(Path(f))
+        fs.append(meta)
+    # Load templates
+    tem_idx = JINJA_ENV.get_template("index.html")
+    tem_feature = JINJA_ENV.get_template("feature.html")
+    # Resolve dataset path once and use later
+    resolved_ds_path = ""
+    for s in dl.siblings(dataset=ds):
+        # If origin is found, use that else set default
+        if s["name"] == "origin":
+            resolved_ds_path = s["path"]
+            break
+        if s["name"] == "here":
+            resolved_ds_path = s["path"]
+    # Write HTML files
+    output.mkdir(exist_ok=True)
+    (output / "index.html").write_text(
+        tem_idx.render(features=fs, version=version("julio")),
+    )
+    buf = io.StringIO()
+    for f in fs:
+        buf.seek(0)
+        md5 = f["md5"]
+        yl = yaml.load(
+            stream=(ds.pathobj / "features" / f"feature-{md5}.yaml").open("r")
+        )
+        yaml.dump(yl, stream=buf)
+        tem_render = tem_feature.render(
+            feature=f,
+            yaml=buf.getvalue(),
+            version=version("julio"),
+            dataset=resolved_ds_path,
+        )
+        (output / f"{md5}.html").write_text(tem_render)
+    # Copy JS
+    shutil.copy(Path(__file__).parent / "index.js", output / "index.js")
+    shutil.copy(Path(__file__).parent / "feature.js", output / "feature.js")
+    # Copy CSS
+    shutil.copy(Path(__file__).parent / "julio.css", output / "julio.css")
+    # Copy assets
+    shutil.copy(Path(__file__).parent / "logo.png", output / "logo.png")
+    log.debug("Built static site")
