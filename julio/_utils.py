@@ -6,22 +6,27 @@
 import datetime as dt
 import pathlib
 import re
-import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 import datalad.api as dl
 import structlog
-from h5io import read_hdf5, write_hdf5
+from h5io import write_hdf5
 from junifer.api import generate_yaml, parse_yaml
+from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 from tqdm import tqdm
+
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 __all__ = ["PathOrURL", "is_julio_registry", "process_features"]
 
 logger = structlog.get_logger()
+
 
 # The following is taken from:
 # https://validators.readthedocs.io/en/latest/_modules/validators/url.html#url
@@ -73,6 +78,12 @@ regex = re.compile(
 
 pattern = re.compile(regex)
 
+# Remote URLs that are not HTTP(S), e.g., ssh://host/path, git@host:path or
+# ria+ssh://host/path
+remote_pattern = re.compile(
+    r"^(?:[a-z][a-z0-9+.-]*://\S+|[\w.-]+@[\w.-]+:\S*)$"
+)
+
 
 class PathOrURLParamType(click.ParamType):  # pragma: no cover
     name = "path_or_url"
@@ -84,6 +95,8 @@ class PathOrURLParamType(click.ParamType):  # pragma: no cover
                 return value
             else:
                 self.fail(f"{value!r} is not a valid url.", param, ctx)
+        if remote_pattern.match(value) is not None:
+            return value
         # Path
         try:
             p = click.Path(
@@ -121,8 +134,8 @@ def is_julio_registry(ds: dl.Dataset) -> bool:
     return False
 
 
-def _parse_yaml(yaml_path: Path) -> dict:
-    """Parse the junifer YAML.
+def _get_storage_path(yaml_path: Path) -> Path:
+    """Get the path of the HDF5 storage of a junifer YAML.
 
     Parameters
     ----------
@@ -131,51 +144,97 @@ def _parse_yaml(yaml_path: Path) -> dict:
 
     Returns
     -------
-    dict
-        Parsed YAML content.
+    Path
+        Path to the HDF5 storage, with the features collected.
 
     Raises
     ------
     RuntimeError
-        If the YAML file is invalid or
-        storage file does not exist.
+        If the storage is not an existing ``HDF5FeatureStorage``.
 
     """
     log = logger.bind(cmd="parse_yaml", path=str(yaml_path.resolve()))
     log.debug("Parsing junifer YAML")
+    # junifer resolves the storage URI relative to the YAML
     contents = parse_yaml(yaml_path)
-    # Validate mandatory sections
-    mandatory = ("workdir", "datagrabber", "markers", "storage")
-    for s in mandatory:
-        if s not in contents.keys():
-            raise RuntimeError(
-                f"`{s}` section not defined in {yaml_path.resolve()!s}"
-            )
-    # Validate optional sections
-    optional = ("with", "preprocess", "queue")
-    for k in contents.keys():
-        if k not in mandatory + optional:
-            raise RuntimeError(
-                f"Unknown section `{k}` in {yaml_path.resolve()!s}"
-            )
-    # Validate storage
-    if "uri" not in contents["storage"]:
+    storage = contents.get("storage", {})
+    if storage.get("kind") != "HDF5FeatureStorage":
+        raise RuntimeError(
+            f"Unsupported storage kind `{storage.get('kind')}` in "
+            f"{yaml_path.resolve()!s}: only `HDF5FeatureStorage` is supported"
+        )
+    if "uri" not in storage:
         raise RuntimeError(
             f"`uri` missing from `storage` section in {yaml_path.resolve()!s}"
         )
-    # Validate storage file exists
-    if not Path(contents["storage"]["uri"]).exists():
+    storage_path = Path(storage["uri"])
+    if not storage_path.is_file():
         raise RuntimeError(
-            f"Storage file does not exist: {contents['storage']['uri']}"
+            f"Storage file does not exist: {storage_path!s}. If the "
+            "features were stored with `single_output: false`, run "
+            "`junifer collect` first."
         )
     log.debug("Parsed junifer YAML")
-    return contents
+    return storage_path
+
+
+def _data_info(data: "np.ndarray | list[np.ndarray]") -> dict[str, Any]:
+    """Get the shape, size, data type and number of bytes of feature data.
+
+    Parameters
+    ----------
+    data : np.ndarray or list of np.ndarray
+        The feature data: an array for vectors and matrices or a list of
+        arrays (one per element) for the others (e.g., timeseries).
+
+    Returns
+    -------
+    dict
+        The information of the data.
+
+    """
+    arrays = data if isinstance(data, list) else [data]
+    if isinstance(data, list):
+        # The shape of the elements, if they are all the same
+        shapes = {a.shape for a in arrays}
+        shape = [len(arrays), *next(iter(shapes))] if len(shapes) == 1 else []
+    else:
+        shape = list(data.shape)
+    return {
+        "shape": [int(x) for x in shape],
+        "size": int(sum(a.size for a in arrays)),
+        "dtype": str(arrays[0].dtype) if arrays else "",
+        "nbytes": int(sum(a.nbytes for a in arrays)),
+    }
+
+
+def _find_mapping(mappings: list[dict], klass: str) -> dict | None:
+    """Find the mapping of a pipeline component.
+
+    Parameters
+    ----------
+    mappings : list of dict
+        The mappings of a kind of pipeline component.
+    klass : str
+        The class of the pipeline component.
+
+    Returns
+    -------
+    dict or None
+        The mapping of the component, if any.
+
+    """
+    for mapping in mappings:
+        if mapping["class"] == klass:
+            return mapping
+    return None
 
 
 def _generate_meta_yaml(
+    feature_md5: str,
     meta: dict,
     data: dict,
-    md5: str,
+    feature_yaml: dict,
     mappings: dict,
     dataset_display_name: str | None,
 ) -> dict:
@@ -183,12 +242,14 @@ def _generate_meta_yaml(
 
     Parameters
     ----------
+    feature_md5 : str
+        Feature MD5.
     meta : dict
         Feature metadata as dictionary.
     data : dict
         Feature data as dictionary.
-    md5 : str
-        Feature MD5.
+    feature_yaml : dict
+        The junifer YAML to compute the feature.
     mappings : dict
         Registry mappings as dictionary.
     dataset_display_name : str or None
@@ -201,56 +262,96 @@ def _generate_meta_yaml(
 
     """
     y: dict[str, Any] = {}
-    y["md5"] = md5
+    y["md5"] = feature_md5
     y["name"] = meta["name"]
     y["added_on"] = dt.datetime.now(tz=dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
-    ndata = data["data"]
-    y["data"] = {
-        "shape": ndata.shape,
-        "size": ndata.size,
-        "dtype": str(ndata.dtype),
-        "nbytes": sys.getsizeof(ndata),
-    }
+    y["data"] = _data_info(data["data"])
     y["samples"] = len(data["element"])
-    mm = {}
-    for k, v in meta["marker"].items():
-        if k not in ("class", "on", "name"):
-            mm[k] = v
-    y["marker_meta"] = mm
-    sm = {}
-    for k, v in data.items():
-        if k not in ("data", "element"):
-            sm[k] = v
-    y["storage_meta"] = sm
+    # The parameters set in the YAML, as the defaults are not stored
+    marker = feature_yaml["markers"][0]
+    y["marker_meta"] = {
+        k: v for k, v in marker.items() if k not in ("kind", "name")
+    }
+    y["storage_meta"] = {
+        k: v for k, v in data.items() if k not in ("data", "element")
+    }
+    y["dependencies"] = dict(meta.get("dependencies", {}))
     tags = []
-    for i in mappings["datagrabbers"]:
-        if meta["datagrabber"]["class"] == i["class"]:
-            tags.extend(i["tags"])
-            y["dataset"] = {
-                "name": i["class"],
-                "description": i["description"],
-                "display_name": i["display_name"]
-                if dataset_display_name is None
-                else dataset_display_name,
-            }
-    for i in mappings["markers"]:
-        if meta["marker"]["class"] == i["class"]:
-            tags.extend(i["tags"])
-    y["tags"] = list(set(tags))
+    dg_class = meta["datagrabber"]["class"]
+    dg_mapping = _find_mapping(mappings["datagrabbers"], dg_class)
+    if dg_mapping is not None:
+        tags.extend(dg_mapping["tags"])
+    y["dataset"] = {
+        "name": dg_class,
+        "description": "" if dg_mapping is None else dg_mapping["description"],
+        "display_name": dataset_display_name
+        or (dg_class if dg_mapping is None else dg_mapping["display_name"]),
+    }
+    marker_class = meta["marker"]["class"]
+    marker_mapping = _find_mapping(mappings["markers"], marker_class)
+    if marker_mapping is not None:
+        tags.extend(marker_mapping["tags"])
+    y["marker"] = {
+        "name": marker_class,
+        "description": ""
+        if marker_mapping is None
+        else marker_mapping["description"],
+        "display_name": marker_class
+        if marker_mapping is None
+        else marker_mapping["display_name"],
+    }
+    y["tags"] = sorted(set(tags))
     return y
 
 
-def _process_hdf5(
-    data: dict,
-    ds: dl.Dataset,
-    dataset_display_name: str | None,
-) -> dl.Dataset:
-    """Read and write HDF5 data.
+def _write_feature_hdf5(
+    path: Path, feature_md5: str, meta: dict, data: dict
+) -> None:
+    """Write a feature to its own HDF5 file, as junifer stores it.
+
+    The file can be read with :class:`junifer.storage.HDF5FeatureStorage`.
 
     Parameters
     ----------
+    path : Path
+        Path to the HDF5 file.
+    feature_md5 : str
+        Feature MD5.
+    meta : dict
+        Feature metadata as dictionary.
     data : dict
-        Parsed YAML as dictionary.
+        Feature data as dictionary.
+
+    """
+    write_hdf5(
+        fname=str(path),
+        data={feature_md5: meta},
+        overwrite=True,
+        title="meta",
+        slash="error",
+        use_json=True,
+    )
+    write_hdf5(
+        fname=str(path),
+        data=data,
+        overwrite="update",
+        title=feature_md5,
+        slash="error",
+        use_json=True,
+    )
+
+
+def _process_hdf5(
+    storage_path: Path,
+    ds: dl.Dataset,
+    dataset_display_name: str | None,
+) -> list[str]:
+    """Add the features of an HDF5 storage to the dataset.
+
+    Parameters
+    ----------
+    storage_path : Path
+        Path to the HDF5 storage.
     ds : dl.Dataset
         Dataset to add features to.
     dataset_display_name : str or None
@@ -258,55 +359,67 @@ def _process_hdf5(
 
     Returns
     -------
-    dl.Dataset
-        Dataset with features added.
+    list of str
+        The MD5 of the features added.
+
+    Raises
+    ------
+    RuntimeError
+        If the YAML cannot be generated for a feature (e.g., it was computed
+        with junifer <= 0.0.8).
 
     """
-    log = logger.bind(cmd="process_hdf5", path=data["storage"]["uri"])
+    log = logger.bind(cmd="process_hdf5", path=str(storage_path))
     log.debug("Processing HDF5 file")
-    metadata = read_hdf5(
-        fname=data["storage"]["uri"],
-        title="meta",
-        slash="ignore",
-    )
+    storage = HDF5FeatureStorage(uri=storage_path)
+    features = storage.list_features()
+    # Generate all the YAMLs first, to not add any feature if one fails
+    feature_yamls = {}
+    for feature_md5, meta in features.items():
+        try:
+            feature_yamls[feature_md5] = generate_yaml(meta)
+        except ValueError as e:
+            raise RuntimeError(
+                f"Cannot add the features in {storage_path!s}: {e}"
+            ) from e
+    config_path = ds.pathobj / "registry-config.yml"
+    with config_path.open("r") as f:
+        mappings = yaml.load(f)["mappings"]
     feature_dir = ds.pathobj / "features"
     feature_dir.mkdir(exist_ok=True)
-    for k, v in tqdm(metadata.items(), desc="Processing features"):
-        # Add "with" and "queue" section if present in data
-        if "with" in data:
-            v["with"] = data["with"].copy()
-        if "queue" in data:
-            v["queue"] = data["queue"].copy()
+    added = []
+    for feature_md5, meta in tqdm(
+        features.items(), desc="Processing features"
+    ):
+        meta_path = feature_dir / f"feature-{feature_md5}-meta.yml"
+        if meta_path.exists():
+            log.info(f"Feature {feature_md5} already in registry, skipping")
+            continue
         # YAML
-        yaml_data = generate_yaml(v)
-        yaml_path = feature_dir / f"feature-{k}.yml"
-        yaml.dump(yaml_data, stream=yaml_path.open("w"))
+        with (feature_dir / f"feature-{feature_md5}.yml").open("w") as f:
+            yaml.dump(feature_yamls[feature_md5], stream=f)
         # Data
-        h5_data = read_hdf5(
-            fname=data["storage"]["uri"], title=k, slash="ignore"
-        )
-        data_path = feature_dir / f"feature-{k}.h5"
-        write_hdf5(
-            fname=str(data_path.resolve()),
-            data=h5_data,
-            overwrite=True,
-            title=k,
-            slash="error",
-            use_json=False,
+        data = storage.read(feature_md5=feature_md5)
+        _write_feature_hdf5(
+            path=feature_dir / f"feature-{feature_md5}.h5",
+            feature_md5=feature_md5,
+            meta=meta,
+            data=data,
         )
         # Metadata
-        config_path = ds.pathobj / "registry-config.yml"
         meta_data = _generate_meta_yaml(
-            meta=v,
-            data=h5_data,
-            md5=k,
-            mappings=yaml.load(stream=config_path.open("r"))["mappings"],
+            feature_md5=feature_md5,
+            meta=meta,
+            data=data,
+            feature_yaml=feature_yamls[feature_md5],
+            mappings=mappings,
             dataset_display_name=dataset_display_name,
         )
-        meta_path = feature_dir / f"feature-{k}-meta.yml"
-        yaml.dump(meta_data, stream=meta_path.open("w"))
+        with meta_path.open("w") as f:
+            yaml.dump(meta_data, stream=f)
+        added.append(feature_md5)
     log.debug("Processed HDF5 file")
-    return ds
+    return added
 
 
 def process_features(
@@ -339,22 +452,18 @@ def process_features(
     """
     log = logger.bind(cmd="process_features", path=str(yaml_path.resolve()))
     log.debug("Processing features")
-    data = _parse_yaml(yaml_path)
-    if data["storage"]["uri"].endswith(".hdf5"):
-        ds = _process_hdf5(
-            data=data,
-            ds=ds,
-            dataset_display_name=dataset_display_name,
-        )
-    else:
-        raise RuntimeError(
-            "Unsupported storage format extension: "
-            f"{Path(data['storage']['uri']).suffix}"
-        )
-    ds.save(
-        message=f"[julio] add features for {yaml_path.name}",
-        on_failure="stop",
-        result_renderer="disabled",
+    storage_path = _get_storage_path(yaml_path)
+    added = _process_hdf5(
+        storage_path=storage_path,
+        ds=ds,
+        dataset_display_name=dataset_display_name,
     )
-    log.debug("Processed features")
+    if added:
+        ds.save(
+            path=ds.pathobj / "features",
+            message=f"[julio] add features for {yaml_path.name}",
+            on_failure="stop",
+            result_renderer="disabled",
+        )
+    log.debug("Processed features", added=len(added))
     return ds

@@ -88,9 +88,11 @@ def add(
     """
     log = logger.bind(
         cmd="add",
-        path=registry_path if str else str(registry_path.resolve()),
+        path=registry_path
+        if isinstance(registry_path, str)
+        else str(registry_path.resolve()),
     )
-    if isinstance(registry_path, str):  # pragma: no cover
+    if isinstance(registry_path, str):
         log.debug("Cloning remote registry")
         with tempfile.TemporaryDirectory() as tmpdir:
             log.debug(f"Temporary directory created at {tmpdir}")
@@ -116,7 +118,8 @@ def add(
             process_features(yaml_path, ds, dataset_display_name)
             # Push changes to remote registry
             try:
-                ds = dl.push(
+                ds.push(
+                    to="origin",
                     on_failure="stop",
                     result_renderer="disabled",
                 )

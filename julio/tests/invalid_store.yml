@@ -1,24 +1,31 @@
 workdir: ./junifer-temp
 
+with:
+  - junifer.testing.registry
+
 datagrabber:
-  kind: DMCC13Benchmark
-  types:
-    - BOLD
-  sessions:
-    - ses-wave1bas
-  tasks:
-    - Rest
-  phase_encodings:
-    - AP
-  runs:
-    - "1"
+  kind: PartlyCloudyTestingDataGrabber
+  n_subjects: 2
+  n_timepoints: 10
+
+preprocess:
+  - kind: TemporalSlicer
+    start: 0
+    stop: 8.0
 
 markers:
-  - kind: FunctionalConnectivitySpheres
-    coords: DMNBuckner
-    radius: 5.0
-    name: fc_spheres
+  - kind: ParcelAggregation
+    parcellation:
+      - Schaefer100x7
+    method: mean
+    name: schaefer_mean
+  - kind: FunctionalConnectivityParcels
+    parcellation:
+      - Schaefer100x7
+    conn_method_params:
+      empirical: true
+    name: schaefer_fc
 
 storage:
-  kind: HDF5FeatureStorage
+  kind: SQLiteFeatureStorage
   uri: ./store.sqlite
