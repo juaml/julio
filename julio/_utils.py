@@ -415,6 +415,63 @@ def process_features(
     return ds
 
 
+def _find_mapping(mappings: list[dict], klass: str) -> dict | None:
+    """Find the mapping of a pipeline component.
+
+    Parameters
+    ----------
+    mappings : list of dict
+        The mappings of a kind of pipeline component.
+    klass : str
+        The class of the pipeline component.
+
+    Returns
+    -------
+    dict or None
+        The mapping of the component, if any.
+
+    """
+    for mapping in mappings:
+        if mapping["class"] == klass:
+            return mapping
+    return None
+
+
+def _apply_mappings(meta: dict, mappings: dict) -> dict:
+    """Add the human-readable names and tags to a feature meta YAML.
+
+    The components that are not in the mappings keep their class name, and
+    the dataset display name given when adding the feature (if any) takes
+    precedence over the one of the mappings.
+
+    Parameters
+    ----------
+    meta : dict
+        Feature meta YAML.
+    mappings : dict
+        Registry mappings as dictionary.
+
+    Returns
+    -------
+    dict
+        Feature meta YAML with the names, descriptions and tags.
+
+    """
+    out = dict(meta)
+    tags = []
+    for key, kind in (("dataset", "datagrabbers"), ("marker", "markers")):
+        info = dict(meta[key])
+        mapping = _find_mapping(mappings.get(kind) or [], info["name"])
+        if mapping is None:
+            mapping = {"display_name": info["name"], "description": ""}
+        info.setdefault("display_name", mapping["display_name"])
+        info["description"] = mapping["description"]
+        tags.extend(mapping.get("tags") or [])
+        out[key] = info
+    out["tags"] = sorted(set(tags))
+    return out
+
+
 JINJA_ENV = Environment(
     loader=PackageLoader("julio", package_path=""),
     autoescape=select_autoescape(),
@@ -439,11 +496,14 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
     )
     log.debug("Building static site")
     feature_dir = ds.pathobj / "features"
+    # The current mappings of the registry
+    with (ds.pathobj / "registry-config.yaml").open("r") as stream:
+        mappings = yaml.load(stream)["mappings"]
     # Gather available meta files
     fs = []
     for f in sorted(glob.iglob(str((feature_dir / "*-meta.yaml").resolve()))):
         with Path(f).open("r") as stream:
-            fs.append(yaml.load(stream))
+            fs.append(_apply_mappings(yaml.load(stream), mappings))
     # Load templates
     tem_idx = JINJA_ENV.get_template("index.html")
     tem_feature = JINJA_ENV.get_template("feature.html")

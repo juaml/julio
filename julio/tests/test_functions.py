@@ -21,7 +21,7 @@ from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 
 from julio import add, build, create
-from julio._utils import _data_info, _generate_meta_yaml
+from julio._utils import _apply_mappings, _data_info, _generate_meta_yaml
 
 
 TESTS_DIR = Path(__file__).parent
@@ -438,3 +438,102 @@ def test_build_not_registry(tmp_path: Path) -> None:
             output=tmp_path / "build",
             registry_path=str(tmp_path / "missing"),
         )
+
+
+def test_build_mappings(tmp_path: Path) -> None:
+    """Test that the site uses the current mappings of the registry.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    output = tmp_path / "build"
+    build(output=output, registry_path=registry_path)
+    index = (output / "index.html").read_text()
+    # Not in the mappings: the class
+    assert "<td>PartlyCloudyTestingDataGrabber</td>" in index
+    # In the mappings
+    assert "<td>Functional Connectivity</td>" in index
+    # The mappings are changed after adding the features
+    config_path = registry_path / "registry-config.yaml"
+    with config_path.open("r") as f:
+        config = yaml.load(f)
+    config["mappings"]["datagrabbers"].append(
+        {
+            "class": "PartlyCloudyTestingDataGrabber",
+            "display_name": "Partly Cloudy",
+            "tags": ["Partly Cloudy"],
+            "description": "Partly Cloudy movie watching fMRI",
+        }
+    )
+    with config_path.open("w") as f:
+        yaml.dump(config, stream=f)
+    build(output=output, registry_path=registry_path)
+    index = (output / "index.html").read_text()
+    assert "<td>Partly Cloudy</td>" in index
+    assert ">Partly Cloudy</span>" in index
+    md5 = next(
+        iter(HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features())
+    )
+    page = (output / f"{md5}.html").read_text()
+    assert "Partly Cloudy movie watching fMRI" in page
+
+
+def test_apply_mappings() -> None:
+    """Test the mappings applied to the metadata of the features."""
+    mappings = {
+        "datagrabbers": [
+            {
+                "class": "DG",
+                "display_name": "Dataset",
+                "description": "A dataset",
+                "tags": ["A", "B"],
+            }
+        ],
+        "markers": [
+            {
+                "class": "M",
+                "display_name": "Marker",
+                "description": "A marker",
+                "tags": ["B", "C"],
+            }
+        ],
+    }
+    meta = {"md5": "x", "dataset": {"name": "DG"}, "marker": {"name": "M"}}
+    out = _apply_mappings(meta, mappings)
+    assert out["dataset"] == {
+        "name": "DG",
+        "display_name": "Dataset",
+        "description": "A dataset",
+    }
+    assert out["marker"] == {
+        "name": "M",
+        "display_name": "Marker",
+        "description": "A marker",
+    }
+    assert out["tags"] == ["A", "B", "C"]
+    # The metadata is not modified
+    assert meta == {
+        "md5": "x",
+        "dataset": {"name": "DG"},
+        "marker": {"name": "M"},
+    }
+    # The display name given when adding takes precedence
+    meta["dataset"]["display_name"] = "Mine"
+    assert _apply_mappings(meta, mappings)["dataset"]["display_name"] == "Mine"
+    # Not in the mappings, or without mappings
+    for t_mappings in (mappings, {"datagrabbers": None}):
+        out = _apply_mappings(
+            {"dataset": {"name": "Other"}, "marker": {"name": "N"}},
+            t_mappings,
+        )
+        assert out["dataset"] == {
+            "name": "Other",
+            "display_name": "Other",
+            "description": "",
+        }
+        assert out["marker"]["display_name"] == "N"
+        assert out["tags"] == []
