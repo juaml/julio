@@ -62,3 +62,27 @@ julio build --registry my-registry --output site
 
 The download instructions of the site clone the registry from its `origin`
 sibling (e.g., the one added by `publish`).
+
+## Mappings
+
+The site shows human-readable names, descriptions and tags for the datasets
+and markers, from the `mappings` in `registry-config.yaml`. `create` writes
+the default mappings of julio, and they are part of the registry: updating
+julio does not change them, and they can be edited, e.g., to add custom
+datagrabbers:
+
+```yaml
+mappings:
+  datagrabbers:
+    - class: MyDataGrabber
+      display_name: My Dataset
+      tags:
+        - My Dataset
+      description: The dataset of my lab
+  markers:
+    - ...
+```
+
+The mappings are applied when building the site, so the changes apply to the
+features already in the registry. The components not in the mappings are
+shown with their class name.
