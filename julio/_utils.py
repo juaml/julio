@@ -5,6 +5,7 @@
 
 import datetime as dt
 import glob
+import io
 import pathlib
 import re
 import shutil
@@ -15,8 +16,14 @@ from typing import TYPE_CHECKING, Any
 import click
 import datalad.api as dl
 import structlog
+from datalad.support.exceptions import IncompleteResultsError
 from h5io import write_hdf5
-from jinja2 import Environment, PackageLoader, select_autoescape
+from jinja2 import (
+    ChainableUndefined,
+    Environment,
+    PackageLoader,
+    select_autoescape,
+)
 from junifer.api import generate_yaml, parse_yaml
 from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
@@ -27,9 +34,19 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-__all__ = ["PathOrURL", "is_julio_registry", "process_features"]
+__all__ = [
+    "PathOrURL",
+    "build_site",
+    "is_julio_registry",
+    "process_features",
+    "reindex_features",
+]
 
 logger = structlog.get_logger()
+
+# The version of the format of the meta YAML of the features; increase it
+# when changing _generate_meta_yaml, so that the registries are reindexed
+META_VERSION = 1
 
 
 # The following is taken from:
@@ -243,6 +260,7 @@ def _generate_meta_yaml(
 
     """
     y: dict[str, Any] = {}
+    y["meta_version"] = META_VERSION
     y["md5"] = feature_md5
     y["name"] = meta["name"]
     y["data"] = _data_info(data["data"])
@@ -416,6 +434,104 @@ def process_features(
     return ds
 
 
+def _as_stored(data: dict) -> dict:
+    """Get the data as it is loaded from a YAML file.
+
+    Parameters
+    ----------
+    data : dict
+        The data.
+
+    Returns
+    -------
+    dict
+        The data, dumped to and loaded from YAML.
+
+    """
+    stream = io.StringIO()
+    yaml.dump(data, stream=stream)
+    stream.seek(0)
+    return yaml.load(stream)
+
+
+def reindex_features(ds: dl.Dataset) -> list[str]:
+    """Generate the meta YAML of the features again from their HDF5 files.
+
+    The HDF5 files that are not present are fetched, and dropped afterwards.
+
+    Parameters
+    ----------
+    ds : dl.Dataset
+        Dataset of the registry.
+
+    Returns
+    -------
+    list of str
+        The MD5 of the features whose meta YAML changed.
+
+    Raises
+    ------
+    RuntimeError
+        If the YAML cannot be generated for a feature.
+
+    """
+    log = logger.bind(cmd="reindex", path=str(ds.pathobj))
+    log.debug("Reindexing features")
+    feature_dir = ds.pathobj / "features"
+    updated = []
+    for hdf5_path in tqdm(
+        sorted(feature_dir.glob("feature-*.hdf5")), desc="Reindexing features"
+    ):
+        feature_md5 = hdf5_path.stem.removeprefix("feature-")
+        present = ds.repo.file_has_content(str(hdf5_path))
+        if not present:
+            try:
+                ds.get(
+                    hdf5_path, result_renderer="disabled", on_failure="stop"
+                )
+            except IncompleteResultsError as e:
+                raise RuntimeError(
+                    f"Failed to get the HDF5 file of the feature "
+                    f"{feature_md5}: {e.failed}"
+                ) from e
+        storage = HDF5FeatureStorage(uri=hdf5_path)
+        meta = storage.list_features()[feature_md5]
+        try:
+            feature_yaml = generate_yaml(meta)
+        except ValueError as e:
+            raise RuntimeError(
+                f"Cannot reindex the feature {feature_md5}: {e}"
+            ) from e
+        meta_data = _as_stored(
+            _generate_meta_yaml(
+                feature_md5=feature_md5,
+                meta=meta,
+                data=storage.read(feature_md5=feature_md5),
+                feature_yaml=feature_yaml,
+            )
+        )
+        if not present:
+            ds.drop(hdf5_path, result_renderer="disabled", on_failure="stop")
+        meta_path = feature_dir / f"feature-{feature_md5}-meta.yaml"
+        stored = None
+        if meta_path.exists():
+            with meta_path.open("r") as f:
+                stored = yaml.load(f)
+        if stored != meta_data:
+            with meta_path.open("w") as f:
+                yaml.dump(meta_data, stream=f)
+            updated.append(feature_md5)
+    if updated:
+        ds.save(
+            path=feature_dir,
+            message=f"[julio] reindex {len(updated)} feature(s)",
+            on_failure="stop",
+            result_renderer="disabled",
+        )
+    log.debug("Reindexed features", updated=len(updated))
+    return updated
+
+
 def _find_mapping(mappings: list[dict], klass: str) -> dict | None:
     """Find the mapping of a pipeline component.
 
@@ -474,6 +590,8 @@ def _apply_mappings(meta: dict, mappings: dict) -> dict:
 JINJA_ENV = Environment(
     loader=PackageLoader("julio", package_path=""),
     autoescape=select_autoescape(),
+    # Missing fields (e.g., in outdated meta YAMLs) are shown empty
+    undefined=ChainableUndefined,
 )
 
 
@@ -543,6 +661,13 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
     for f in sorted(glob.iglob(str((feature_dir / "*-meta.yaml").resolve()))):
         with Path(f).open("r") as stream:
             fs.append(_apply_mappings(yaml.load(stream), mappings))
+    outdated = [f["md5"] for f in fs if f.get("meta_version") != META_VERSION]
+    if outdated:
+        log.warning(
+            f"{len(outdated)} feature(s) were indexed with another version of "
+            "julio and might not be shown correctly: run `julio reindex`",
+            features=outdated,
+        )
     added_on = _added_on(ds)
     for f in fs:
         f["added_on"] = added_on.get(f["md5"], "")

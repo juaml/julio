@@ -21,7 +21,8 @@ from junifer.api import generate_yaml
 from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 
-from julio import add, build, create, publish
+import julio._utils
+from julio import add, build, create, publish, reindex
 from julio._utils import _apply_mappings, _data_info, _generate_meta_yaml
 
 
@@ -689,3 +690,162 @@ def test_publish_invalid(tmp_path: Path) -> None:
     # Nothing to push to
     with pytest.raises(RuntimeError, match="Failed to push"):
         publish(registry_path, str(tmp_path / "missing"))
+
+
+def _make_outdated(registry_path: Path, md5: str) -> dict:
+    """Make the meta YAML of a feature outdated and commit it.
+
+    Parameters
+    ----------
+    registry_path : Path
+        Path to the registry.
+    md5 : str
+        MD5 of the feature.
+
+    Returns
+    -------
+    dict
+        The meta YAML before the change.
+
+    """
+    meta_path = registry_path / "features" / f"feature-{md5}-meta.yaml"
+    with meta_path.open("r") as f:
+        original = yaml.load(f)
+    outdated = dict(original)
+    outdated["meta_version"] = 0
+    outdated.pop("storage_meta")
+    with meta_path.open("w") as f:
+        yaml.dump(outdated, stream=f)
+    dl.Dataset(registry_path).save(
+        message="outdated", result_renderer="disabled"
+    )
+    return original
+
+
+class _RecordingLogger:
+    """Logger that records the warnings."""
+
+    def __init__(self) -> None:
+        self.warnings = []
+
+    def bind(self, **kwargs) -> "_RecordingLogger":
+        """Bind the logger."""
+        return self
+
+    def debug(self, *args, **kwargs) -> None:
+        """Log a debug message."""
+
+    def info(self, *args, **kwargs) -> None:
+        """Log an info message."""
+
+    def warning(self, msg: str, **kwargs) -> None:
+        """Record a warning."""
+        self.warnings.append((msg, kwargs))
+
+
+def test_reindex(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test reindexing the features of a registry.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+    monkeypatch : pytest.MonkeyPatch
+        Pytest fixture to modify objects.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    ds = dl.Dataset(registry_path)
+    n_commits = _n_commits(registry_path)
+    # Nothing to do
+    assert reindex(registry_path) == []
+    assert _n_commits(registry_path) == n_commits
+    md5 = sorted(
+        HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features()
+    )[0]
+    original = _make_outdated(registry_path, md5)
+    # The site warns about it
+    log = _RecordingLogger()
+    monkeypatch.setattr(julio._utils, "logger", log)
+    build(output=tmp_path / "build", registry_path=registry_path)
+    reindex_warnings = [w for w in log.warnings if "julio reindex" in w[0]]
+    assert len(reindex_warnings) == 1
+    assert reindex_warnings[0][1]["features"] == [md5]
+    monkeypatch.undo()
+    # Reindexed, with the data present
+    assert reindex(registry_path) == [md5]
+    meta_path = registry_path / "features" / f"feature-{md5}-meta.yaml"
+    with meta_path.open("r") as f:
+        assert yaml.load(f) == original
+    assert _n_commits(registry_path) == n_commits + 2
+    assert not ds.repo.dirty
+    # Reindexed, without the data present: fetched from origin and dropped
+    local_path = tmp_path / "local"
+    local = dl.clone(
+        source=registry_path, path=local_path, result_renderer="disabled"
+    )
+    hdf5_path = local_path / "features" / f"feature-{md5}.hdf5"
+    assert not local.repo.file_has_content(str(hdf5_path))
+    _make_outdated(local_path, md5)
+    assert reindex(local_path) == [md5]
+    meta_path = local_path / "features" / f"feature-{md5}-meta.yaml"
+    with meta_path.open("r") as f:
+        assert yaml.load(f) == original
+    assert not local.repo.file_has_content(str(hdf5_path))
+    # Without any copy of the data
+    _make_outdated(registry_path, md5)
+    ds.drop(
+        registry_path / "features" / f"feature-{md5}.hdf5",
+        reckless="kill",
+        result_renderer="disabled",
+    )
+    with pytest.raises(RuntimeError, match="Failed to get"):
+        reindex(registry_path)
+
+
+def test_reindex_remote(tmp_path: Path) -> None:
+    """Test reindexing the features of a remote registry.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    # Allow pushing to the checked out branch of the "remote"
+    subprocess.run(
+        ["git", "config", "receive.denyCurrentBranch", "updateInstead"],
+        cwd=registry_path,
+        check=True,
+    )
+    md5 = sorted(
+        HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features()
+    )[0]
+    original = _make_outdated(registry_path, md5)
+    n_commits = _n_commits(registry_path)
+    assert reindex(str(registry_path)) == [md5]
+    assert _n_commits(registry_path) == n_commits + 1
+    meta_path = registry_path / "features" / f"feature-{md5}-meta.yaml"
+    with meta_path.open("r") as f:
+        assert yaml.load(f) == original
+    # Nothing to do
+    assert reindex(str(registry_path)) == []
+
+
+def test_reindex_invalid(tmp_path: Path) -> None:
+    """Test reindexing invalid registries.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    with pytest.raises(RuntimeError, match="not a julio registry"):
+        reindex(tmp_path)
+    dl.create(path=tmp_path / "dataset", result_renderer="disabled")
+    with pytest.raises(RuntimeError, match="not a julio registry"):
+        reindex(str(tmp_path / "dataset"))
+    with pytest.raises(RuntimeError, match="Failed to clone"):
+        reindex(str(tmp_path / "missing"))

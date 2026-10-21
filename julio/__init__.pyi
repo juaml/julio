@@ -3,6 +3,7 @@ __all__ = [
     "build",
     "create",
     "publish",
+    "reindex",
 ]
 
-from ._functions import add, build, create, publish
+from ._functions import add, build, create, publish, reindex
