@@ -208,34 +208,11 @@ def _data_info(data: "np.ndarray | list[np.ndarray]") -> dict[str, Any]:
     }
 
 
-def _find_mapping(mappings: list[dict], klass: str) -> dict | None:
-    """Find the mapping of a pipeline component.
-
-    Parameters
-    ----------
-    mappings : list of dict
-        The mappings of a kind of pipeline component.
-    klass : str
-        The class of the pipeline component.
-
-    Returns
-    -------
-    dict or None
-        The mapping of the component, if any.
-
-    """
-    for mapping in mappings:
-        if mapping["class"] == klass:
-            return mapping
-    return None
-
-
 def _generate_meta_yaml(
     feature_md5: str,
     meta: dict,
     data: dict,
     feature_yaml: dict,
-    mappings: dict,
     dataset_display_name: str | None,
 ) -> dict:
     """Generate a feature meta YAML from data.
@@ -250,10 +227,9 @@ def _generate_meta_yaml(
         Feature data as dictionary.
     feature_yaml : dict
         The junifer YAML to compute the feature.
-    mappings : dict
-        Registry mappings as dictionary.
     dataset_display_name : str or None
-        Dataset display name.
+        Dataset display name, which takes precedence over the one of the
+        mappings of the registry.
 
     Returns
     -------
@@ -276,31 +252,12 @@ def _generate_meta_yaml(
         k: v for k, v in data.items() if k not in ("data", "element")
     }
     y["dependencies"] = dict(meta.get("dependencies", {}))
-    tags = []
-    dg_class = meta["datagrabber"]["class"]
-    dg_mapping = _find_mapping(mappings["datagrabbers"], dg_class)
-    if dg_mapping is not None:
-        tags.extend(dg_mapping["tags"])
-    y["dataset"] = {
-        "name": dg_class,
-        "description": "" if dg_mapping is None else dg_mapping["description"],
-        "display_name": dataset_display_name
-        or (dg_class if dg_mapping is None else dg_mapping["display_name"]),
-    }
-    marker_class = meta["marker"]["class"]
-    marker_mapping = _find_mapping(mappings["markers"], marker_class)
-    if marker_mapping is not None:
-        tags.extend(marker_mapping["tags"])
-    y["marker"] = {
-        "name": marker_class,
-        "description": ""
-        if marker_mapping is None
-        else marker_mapping["description"],
-        "display_name": marker_class
-        if marker_mapping is None
-        else marker_mapping["display_name"],
-    }
-    y["tags"] = sorted(set(tags))
+    # The classes, to get the human-readable names from the mappings of the
+    # registry when building the site
+    y["dataset"] = {"name": meta["datagrabber"]["class"]}
+    if dataset_display_name is not None:
+        y["dataset"]["display_name"] = dataset_display_name
+    y["marker"] = {"name": meta["marker"]["class"]}
     return y
 
 
@@ -382,9 +339,6 @@ def _process_hdf5(
             raise RuntimeError(
                 f"Cannot add the features in {storage_path!s}: {e}"
             ) from e
-    config_path = ds.pathobj / "registry-config.yaml"
-    with config_path.open("r") as f:
-        mappings = yaml.load(f)["mappings"]
     feature_dir = ds.pathobj / "features"
     feature_dir.mkdir(exist_ok=True)
     added = []
@@ -412,7 +366,6 @@ def _process_hdf5(
             meta=meta,
             data=data,
             feature_yaml=feature_yamls[feature_md5],
-            mappings=mappings,
             dataset_display_name=dataset_display_name,
         )
         with meta_path.open("w") as f:

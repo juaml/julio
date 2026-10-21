@@ -113,12 +113,10 @@ def test_add(tmp_path: Path) -> None:
         assert meta["data"]["nbytes"] > 0
         assert not any(k.startswith("_") for k in meta["marker_meta"])
         assert meta["marker_meta"]["parcellation"] == ["Schaefer100x7"]
-        # Not in the mappings
-        assert meta["dataset"] == {
-            "name": "PartlyCloudyTestingDataGrabber",
-            "description": "",
-            "display_name": "PartlyCloudyTestingDataGrabber",
-        }
+        # The classes, the mappings are used when building the site
+        assert meta["dataset"] == {"name": "PartlyCloudyTestingDataGrabber"}
+        assert meta["marker"]["name"] == source_meta["marker"]["class"]
+        assert "tags" not in meta
         assert meta["dependencies"]["junifer"] is not None
     # Adding the same features again does nothing
     add(
@@ -129,8 +127,8 @@ def test_add(tmp_path: Path) -> None:
     assert _n_commits(registry_path) == n_commits + 1
 
 
-def test_add_mappings(tmp_path: Path) -> None:
-    """Test feature addition with the mappings of the registry.
+def test_add_display_name(tmp_path: Path) -> None:
+    """Test feature addition with a dataset display name.
 
     Parameters
     ----------
@@ -140,19 +138,6 @@ def test_add_mappings(tmp_path: Path) -> None:
     """
     registry_path = tmp_path / "test_registry"
     create(registry_path)
-    config_path = registry_path / "registry-config.yaml"
-    with config_path.open("r") as f:
-        config = yaml.load(f)
-    config["mappings"]["datagrabbers"].append(
-        {
-            "class": "PartlyCloudyTestingDataGrabber",
-            "display_name": "Partly Cloudy",
-            "tags": ["Development", "Partly Cloudy"],
-            "description": "Partly Cloudy movie watching fMRI",
-        }
-    )
-    with config_path.open("w") as f:
-        yaml.dump(config, stream=f)
     add(
         yaml_path=TESTS_DIR / "valid.yaml",
         registry_path=registry_path,
@@ -164,13 +149,8 @@ def test_add_mappings(tmp_path: Path) -> None:
             meta = yaml.load(f)
         metas[meta["marker"]["name"]] = meta
     fc = metas["FunctionalConnectivityParcels"]
-    assert fc["marker"]["display_name"] == "Functional Connectivity"
-    assert fc["marker"]["description"] != ""
-    assert fc["tags"] == sorted(set(fc["tags"]))
-    assert {"Development", "Partly Cloudy"} < set(fc["tags"])
     assert fc["dataset"] == {
         "name": "PartlyCloudyTestingDataGrabber",
-        "description": "Partly Cloudy movie watching fMRI",
         "display_name": "Partly Cloudy (2 subjects)",
     }
     # The matrix has the shape of the array, with the elements last
