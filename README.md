@@ -12,7 +12,7 @@ registry/
 ├── features/
 │   ├── feature-<md5>.hdf5        # the feature, readable with junifer
 │   ├── feature-<md5>.yaml        # the YAML to compute it (generate_yaml)
-│   ├── feature-<md5>-meta.yaml   # the metadata, used by the site
+│   ├── feature-<md5>-meta.yaml   # cache of the HDF5 metadata for the site
 │   └── ...
 └── registry-config.yaml          # the mappings to human-readable names
 ```
