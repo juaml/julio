@@ -28,6 +28,22 @@ from julio._utils import _apply_mappings, _data_info, _generate_meta_yaml
 TESTS_DIR = Path(__file__).parent
 
 
+@pytest.fixture(autouse=True)
+def env_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Add the scripts of the environment (e.g., datalad's) to PATH.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest fixture to modify the environment.
+
+    """
+    monkeypatch.setenv(
+        "PATH",
+        f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}",
+    )
+
+
 def test_create(tmp_path: Path) -> None:
     """Test registry creation.
 
@@ -418,8 +434,6 @@ def test_build_remote(tmp_path: Path) -> None:
             if args[0] == "cd":
                 cwd = cwd / args[1]
             else:
-                # datalad of the environment, which might not be in PATH
-                args[0] = str(Path(sys.executable).parent / args[0])
                 subprocess.run(args, cwd=cwd, check=True, capture_output=True)
         code = re.search(r"language-python[^>]*>(.*?)</code>", page, re.DOTALL)
         assert code is not None
