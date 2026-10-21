@@ -151,7 +151,7 @@ def create(
     try:
         cli_func.create(registry_path)
     except RuntimeError as err:
-        click.echo(f"{err}", err=True)
+        raise click.ClickException(str(err)) from err
     else:
         click.echo("Success")
 
@@ -190,7 +190,7 @@ def add(
             registry_path=registry if registry is not None else Path("."),
         )
     except RuntimeError as err:
-        click.echo(f"{err}", err=True)
+        raise click.ClickException(str(err)) from err
     else:
         click.echo("Success")
 
@@ -231,7 +231,7 @@ def build(
             registry if registry is not None else Path("."),
         )
     except RuntimeError as err:
-        click.echo(f"{err}", err=True)
+        raise click.ClickException(str(err)) from err
     else:
         click.echo("Success")
 
@@ -285,6 +285,6 @@ def publish(
             name=name,
         )
     except RuntimeError as err:
-        click.echo(f"{err}", err=True)
+        raise click.ClickException(str(err)) from err
     else:
         click.echo(f"Success: published to `{sibling}`")
