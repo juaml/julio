@@ -11,10 +11,15 @@ import datalad.api as dl
 import structlog
 from datalad.support.exceptions import CommandError, IncompleteResultsError
 
-from ._utils import build_site, is_julio_registry, process_features
+from ._utils import (
+    build_site,
+    is_julio_registry,
+    process_features,
+    reindex_features,
+)
 
 
-__all__ = ["add", "build", "create", "publish"]
+__all__ = ["add", "build", "create", "publish", "reindex"]
 
 
 logger = structlog.get_logger()
@@ -279,3 +284,72 @@ def publish(
         raise RuntimeError(f"Failed to push dataset: {e}") from e
     log.debug("Published registry")
     return sibling
+
+
+def reindex(registry_path: str | Path) -> list[str]:
+    """Reindex the features of the registry at `registry_path`.
+
+    The meta YAML of each feature, a cache of its HDF5 file to build the
+    site, is generated again from the HDF5 file, e.g., after updating julio.
+
+    Parameters
+    ----------
+    registry_path : str or pathlib.Path
+        Path to the existing julio registry.
+
+    Returns
+    -------
+    list of str
+        The MD5 of the features whose meta YAML changed.
+
+    Raises
+    ------
+    RuntimeError
+        If there is a problem cloning or pushing a remote registry,
+        if the dataset is not a julio registry or
+        if a feature cannot be reindexed.
+
+    """
+    log = logger.bind(
+        cmd="reindex",
+        path=registry_path
+        if isinstance(registry_path, str)
+        else str(registry_path.resolve()),
+    )
+    if isinstance(registry_path, str):
+        log.debug("Cloning remote registry")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                ds = dl.clone(
+                    source=registry_path,
+                    path=tmpdir,
+                    on_failure="stop",
+                    result_renderer="disabled",
+                )
+            except IncompleteResultsError as e:
+                raise RuntimeError(
+                    f"Failed to clone dataset: {e.failed}"
+                ) from e
+            if not is_julio_registry(ds):
+                raise RuntimeError(
+                    f"Dataset at {ds.path} is not a julio registry"
+                )
+            updated = reindex_features(ds)
+            if updated:
+                try:
+                    ds.push(
+                        to="origin",
+                        on_failure="stop",
+                        result_renderer="disabled",
+                    )
+                except IncompleteResultsError as e:
+                    raise RuntimeError(
+                        f"Failed to push dataset: {e.failed}"
+                    ) from e
+                log.debug("Pushed changes to remote registry successfully")
+    else:
+        ds = dl.Dataset(registry_path)
+        if not is_julio_registry(ds):
+            raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
+        updated = reindex_features(ds)
+    return updated

@@ -63,6 +63,15 @@ julio build --registry my-registry --output site
 The download instructions of the site clone the registry from its `origin`
 sibling (e.g., the one added by `publish`).
 
+The `-meta.yaml` files are a cache of the HDF5 files, so that the site is
+built without them. After updating julio, `build` warns if they were
+generated with another version: generate them again from the HDF5 files (which
+are fetched if needed, and dropped afterwards) with:
+
+```
+julio reindex --registry my-registry
+```
+
 ## Mappings
 
 The site shows human-readable names, descriptions and tags for the datasets

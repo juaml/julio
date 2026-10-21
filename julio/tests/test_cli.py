@@ -47,6 +47,11 @@ def test_cli(tmp_path: Path) -> None:
         cli, ["build", "-r", str(tmp_path), "-o", str(tmp_path / "build")]
     )
     assert result.exit_code == 1
+    result = runner.invoke(cli, ["reindex", "-r", registry])
+    assert result.exit_code == 0, result.output
+    assert "0 feature(s) reindexed" in result.output
+    result = runner.invoke(cli, ["reindex", "-r", str(tmp_path)])
+    assert result.exit_code == 1
     result = runner.invoke(
         cli, ["publish", "-r", registry, "--remote", "origin"]
     )

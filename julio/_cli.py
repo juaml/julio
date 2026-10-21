@@ -17,7 +17,7 @@ from . import _functions as cli_func
 from . import _utils as cli_utils
 
 
-__all__ = ["add", "build", "cli", "create", "publish"]
+__all__ = ["add", "build", "cli", "create", "publish", "reindex"]
 
 # Common processors for stdlib and structlog
 _timestamper = structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S")
@@ -288,3 +288,29 @@ def publish(
         raise click.ClickException(str(err)) from err
     else:
         click.echo(f"Success: published to `{sibling}`")
+
+
+@cli.command
+@click.option(
+    "-r",
+    "--registry",
+    default=None,
+    type=cli_utils.PathOrURL,
+    metavar="<registry>",
+    help="Path to registry; if not passed, use current directory",
+)
+@click.option("-v", "--verbose", count=True, type=int)
+def reindex(
+    registry: click.Path,
+    verbose: int,
+) -> None:
+    """Reindex feature(s) registry, e.g., after updating julio."""
+    _set_log_config(verbose)
+    try:
+        updated = cli_func.reindex(
+            registry if registry is not None else Path("."),
+        )
+    except RuntimeError as err:
+        raise click.ClickException(str(err)) from err
+    else:
+        click.echo(f"Success: {len(updated)} feature(s) reindexed")
