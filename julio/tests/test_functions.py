@@ -3,6 +3,7 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
+import io
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,7 +18,7 @@ from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 
 from julio import add, create
-from julio._utils import _data_info
+from julio._utils import _data_info, _generate_meta_yaml
 
 
 TESTS_DIR = Path(__file__).parent
@@ -80,7 +81,6 @@ def test_add(tmp_path: Path) -> None:
     add(
         yaml_path=TESTS_DIR / "valid.yaml",
         registry_path=registry_path,
-        dataset_display_name=None,
     )
     assert _n_commits(registry_path) == n_commits + 1
     assert not dl.Dataset(registry_path).repo.dirty
@@ -122,13 +122,12 @@ def test_add(tmp_path: Path) -> None:
     add(
         yaml_path=TESTS_DIR / "valid.yaml",
         registry_path=registry_path,
-        dataset_display_name=None,
     )
     assert _n_commits(registry_path) == n_commits + 1
 
 
-def test_add_display_name(tmp_path: Path) -> None:
-    """Test feature addition with a dataset display name.
+def test_add_meta_from_hdf5(tmp_path: Path) -> None:
+    """Test that the meta YAML can be generated again from the HDF5 file.
 
     Parameters
     ----------
@@ -138,24 +137,30 @@ def test_add_display_name(tmp_path: Path) -> None:
     """
     registry_path = tmp_path / "test_registry"
     create(registry_path)
-    add(
-        yaml_path=TESTS_DIR / "valid.yaml",
-        registry_path=registry_path,
-        dataset_display_name="Partly Cloudy (2 subjects)",
-    )
-    metas = {}
-    for meta_path in (registry_path / "features").glob("*-meta.yaml"):
+    add(yaml_path=TESTS_DIR / "valid.yaml", registry_path=registry_path)
+    f_dir = registry_path / "features"
+    for meta_path in f_dir.glob("*-meta.yaml"):
         with meta_path.open("r") as f:
-            meta = yaml.load(f)
-        metas[meta["marker"]["name"]] = meta
-    fc = metas["FunctionalConnectivityParcels"]
-    assert fc["dataset"] == {
-        "name": "PartlyCloudyTestingDataGrabber",
-        "display_name": "Partly Cloudy (2 subjects)",
-    }
-    # The matrix has the shape of the array, with the elements last
-    assert fc["data"]["shape"] == [100, 100, 2]
-    assert fc["data"]["dtype"] == "float32"
+            stored = yaml.load(f)
+        md5 = stored["md5"]
+        # Only from the HDF5 file of the feature in the registry
+        storage = HDF5FeatureStorage(uri=f_dir / f"feature-{md5}.hdf5")
+        meta = storage.list_features()[md5]
+        generated = _generate_meta_yaml(
+            feature_md5=md5,
+            meta=meta,
+            data=storage.read(feature_md5=md5),
+            feature_yaml=generate_yaml(meta),
+        )
+        # As stored in the YAML
+        stream = io.StringIO()
+        yaml.dump(generated, stream=stream)
+        stream.seek(0)
+        assert yaml.load(stream) == stored
+        if stored["marker"]["name"] == "FunctionalConnectivityParcels":
+            # The matrix has the shape of the array, with the elements last
+            assert stored["data"]["shape"] == [100, 100, 2]
+            assert stored["data"]["dtype"] == "float32"
 
 
 @pytest.mark.parametrize(
@@ -183,7 +188,6 @@ def test_add_invalid_yaml(tmp_path: Path, yml: str) -> None:
         add(
             yaml_path=TESTS_DIR / yml,
             registry_path=registry_path,
-            dataset_display_name=None,
         )
     assert not (registry_path / "features").exists()
 
@@ -201,7 +205,6 @@ def test_add_not_registry(tmp_path: Path) -> None:
         add(
             yaml_path=TESTS_DIR / "valid.yaml",
             registry_path=tmp_path,
-            dataset_display_name=None,
         )
 
 
@@ -238,7 +241,6 @@ def test_add_old_junifer(tmp_path: Path) -> None:
         add(
             yaml_path=yaml_path,
             registry_path=registry_path,
-            dataset_display_name=None,
         )
     assert not (registry_path / "features").exists()
 
@@ -264,7 +266,6 @@ def test_add_remote(tmp_path: Path) -> None:
     add(
         yaml_path=TESTS_DIR / "valid.yaml",
         registry_path=str(registry_path),
-        dataset_display_name=None,
     )
     assert _n_commits(registry_path) == n_commits + 1
     assert len(list((registry_path / "features").glob("*-meta.yaml"))) == 2
@@ -283,14 +284,12 @@ def test_add_remote_invalid(tmp_path: Path) -> None:
         add(
             yaml_path=TESTS_DIR / "valid.yaml",
             registry_path=str(tmp_path / "missing"),
-            dataset_display_name=None,
         )
     dl.create(path=tmp_path / "dataset", result_renderer="disabled")
     with pytest.raises(RuntimeError, match="not a julio registry"):
         add(
             yaml_path=TESTS_DIR / "valid.yaml",
             registry_path=str(tmp_path / "dataset"),
-            dataset_display_name=None,
         )
 
 

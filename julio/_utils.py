@@ -3,7 +3,6 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
-import datetime as dt
 import pathlib
 import re
 from pathlib import Path
@@ -213,9 +212,13 @@ def _generate_meta_yaml(
     meta: dict,
     data: dict,
     feature_yaml: dict,
-    dataset_display_name: str | None,
 ) -> dict:
     """Generate a feature meta YAML from data.
+
+    The meta YAML is a cache of the HDF5 file of the feature, to build the
+    site without reading them, so it only has information from it: it can be
+    generated again from the HDF5 file (e.g., it does not have the mappings
+    of the registry or when the feature was added).
 
     Parameters
     ----------
@@ -227,9 +230,6 @@ def _generate_meta_yaml(
         Feature data as dictionary.
     feature_yaml : dict
         The junifer YAML to compute the feature.
-    dataset_display_name : str or None
-        Dataset display name, which takes precedence over the one of the
-        mappings of the registry.
 
     Returns
     -------
@@ -240,7 +240,6 @@ def _generate_meta_yaml(
     y: dict[str, Any] = {}
     y["md5"] = feature_md5
     y["name"] = meta["name"]
-    y["added_on"] = dt.datetime.now(tz=dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
     y["data"] = _data_info(data["data"])
     y["samples"] = len(data["element"])
     # The parameters set in the YAML, as the defaults are not stored
@@ -255,8 +254,6 @@ def _generate_meta_yaml(
     # The classes, to get the human-readable names from the mappings of the
     # registry when building the site
     y["dataset"] = {"name": meta["datagrabber"]["class"]}
-    if dataset_display_name is not None:
-        y["dataset"]["display_name"] = dataset_display_name
     y["marker"] = {"name": meta["marker"]["class"]}
     return y
 
@@ -301,7 +298,6 @@ def _write_feature_hdf5(
 def _process_hdf5(
     storage_path: Path,
     ds: dl.Dataset,
-    dataset_display_name: str | None,
 ) -> list[str]:
     """Add the features of an HDF5 storage to the dataset.
 
@@ -311,8 +307,6 @@ def _process_hdf5(
         Path to the HDF5 storage.
     ds : dl.Dataset
         Dataset to add features to.
-    dataset_display_name : str or None
-        Dataset display name.
 
     Returns
     -------
@@ -366,7 +360,6 @@ def _process_hdf5(
             meta=meta,
             data=data,
             feature_yaml=feature_yamls[feature_md5],
-            dataset_display_name=dataset_display_name,
         )
         with meta_path.open("w") as f:
             yaml.dump(meta_data, stream=f)
@@ -378,7 +371,6 @@ def _process_hdf5(
 def process_features(
     yaml_path: Path,
     ds: dl.Dataset,
-    dataset_display_name: str | None,
 ) -> dl.Dataset:
     """Parse the junifer YAML and add features to the dataset.
 
@@ -388,8 +380,6 @@ def process_features(
         Path to the junifer YAML.
     ds : dl.Dataset
         Dataset to add features to.
-    dataset_display_name : str or None
-        Dataset display name.
 
     Returns
     -------
@@ -409,7 +399,6 @@ def process_features(
     added = _process_hdf5(
         storage_path=storage_path,
         ds=ds,
-        dataset_display_name=dataset_display_name,
     )
     if added:
         ds.save(
