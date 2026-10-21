@@ -9,12 +9,12 @@ from pathlib import Path
 
 import datalad.api as dl
 import structlog
-from datalad.support.exceptions import IncompleteResultsError
+from datalad.support.exceptions import CommandError, IncompleteResultsError
 
 from ._utils import build_site, is_julio_registry, process_features
 
 
-__all__ = ["add", "build", "create"]
+__all__ = ["add", "build", "create", "publish"]
 
 
 logger = structlog.get_logger()
@@ -184,3 +184,98 @@ def build(output: Path, registry_path: str | Path) -> None:
         if not is_julio_registry(ds):
             raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
         build_site(output, ds)
+
+
+def publish(
+    registry_path: Path,
+    remote: str,
+    name: str | None = None,
+) -> str:
+    """Publish the registry at `registry_path` to `remote`.
+
+    Parameters
+    ----------
+    registry_path : pathlib.Path
+        Path to the existing julio registry.
+    remote : str
+        Name of a sibling of the registry or URL to publish to. If the URL is
+        not of a sibling, a sibling is added: a RIA sibling with its storage
+        sibling for ``ria+`` URLs, or a git sibling for the others.
+    name : str or None, optional
+        Name of the sibling to add, if ``remote`` is a new URL. If None,
+        ``origin`` is used, if the registry does not have it (default None).
+
+    Returns
+    -------
+    str
+        Name of the sibling the registry was published to.
+
+    Raises
+    ------
+    RuntimeError
+        If the dataset is not a julio registry,
+        if the sibling cannot be added or
+        if there is a problem pushing to it.
+
+    """
+    log = logger.bind(cmd="publish", path=str(registry_path.resolve()))
+    ds = dl.Dataset(registry_path)
+    if not is_julio_registry(ds):
+        raise RuntimeError(f"Dataset at {ds.path} is not a julio registry")
+    info = {s["name"]: s for s in ds.siblings(result_renderer="disabled")}
+    siblings = {k: v.get("url") for k, v in info.items()}
+    # The siblings with the URL, including the RIA siblings, whose RIA URL
+    # is the one of their storage sibling
+    by_url = [
+        k
+        for k, v in info.items()
+        if v.get("url") == remote
+        or info.get(v.get("datalad-publish-depends"), {}).get("annex-url")
+        == remote
+    ]
+    if remote in siblings:
+        sibling = remote
+    elif by_url:
+        sibling = by_url[0]
+    else:
+        sibling = name if name is not None else "origin"
+        if sibling in siblings:
+            raise RuntimeError(
+                f"Sibling `{sibling}` already exists with URL "
+                f"{siblings[sibling]}: pass a name for the sibling of "
+                f"{remote}"
+            )
+        log.debug(f"Adding sibling `{sibling}` for {remote}")
+        try:
+            if remote.startswith("ria+"):
+                ds.create_sibling_ria(
+                    url=remote,
+                    name=sibling,
+                    new_store_ok=True,
+                    on_failure="stop",
+                    result_renderer="disabled",
+                )
+            else:
+                ds.siblings(
+                    action="add",
+                    name=sibling,
+                    url=remote,
+                    on_failure="stop",
+                    result_renderer="disabled",
+                )
+        except IncompleteResultsError as e:
+            raise RuntimeError(f"Failed to add sibling: {e.failed}") from e
+    log.debug(f"Publishing registry to `{sibling}`")
+    try:
+        ds.push(
+            to=sibling,
+            data="anything",
+            on_failure="stop",
+            result_renderer="disabled",
+        )
+    except IncompleteResultsError as e:
+        raise RuntimeError(f"Failed to push dataset: {e.failed}") from e
+    except CommandError as e:
+        raise RuntimeError(f"Failed to push dataset: {e}") from e
+    log.debug("Published registry")
+    return sibling

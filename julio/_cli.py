@@ -17,7 +17,7 @@ from . import _functions as cli_func
 from . import _utils as cli_utils
 
 
-__all__ = ["cli", "create"]
+__all__ = ["add", "build", "cli", "create", "publish"]
 
 # Common processors for stdlib and structlog
 _timestamper = structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S")
@@ -234,3 +234,57 @@ def build(
         click.echo(f"{err}", err=True)
     else:
         click.echo("Success")
+
+
+@cli.command
+@click.option(
+    "-r",
+    "--registry",
+    default=None,
+    type=click.Path(
+        exists=True,
+        readable=True,
+        writable=True,
+        file_okay=False,
+        path_type=pathlib.Path,
+    ),
+    metavar="<registry>",
+    help="Path to registry; if not passed, use current directory",
+)
+@click.option(
+    "--remote",
+    required=True,
+    type=str,
+    metavar="<remote>",
+    help=(
+        "Sibling name or URL to publish to; a `ria+` URL creates a RIA "
+        "sibling with storage"
+    ),
+)
+@click.option(
+    "-n",
+    "--name",
+    default=None,
+    type=str,
+    metavar="<name>",
+    help="Name of the sibling to add for a new URL; if not passed, `origin`",
+)
+@click.option("-v", "--verbose", count=True, type=int)
+def publish(
+    registry: click.Path,
+    remote: str,
+    name: str,
+    verbose: int,
+) -> None:
+    """Publish feature(s) registry."""
+    _set_log_config(verbose)
+    try:
+        sibling = cli_func.publish(
+            registry_path=registry if registry is not None else Path("."),
+            remote=remote,
+            name=name,
+        )
+    except RuntimeError as err:
+        click.echo(f"{err}", err=True)
+    else:
+        click.echo(f"Success: published to `{sibling}`")
