@@ -3,6 +3,7 @@
 # Authors: Synchon Mandal <s.mandal@fz-juelich.de>
 # License: AGPL
 
+import datetime as dt
 import glob
 import pathlib
 import re
@@ -440,9 +441,7 @@ def _find_mapping(mappings: list[dict], klass: str) -> dict | None:
 def _apply_mappings(meta: dict, mappings: dict) -> dict:
     """Add the human-readable names and tags to a feature meta YAML.
 
-    The components that are not in the mappings keep their class name, and
-    the dataset display name given when adding the feature (if any) takes
-    precedence over the one of the mappings.
+    The components that are not in the mappings keep their class name.
 
     Parameters
     ----------
@@ -464,7 +463,7 @@ def _apply_mappings(meta: dict, mappings: dict) -> dict:
         mapping = _find_mapping(mappings.get(kind) or [], info["name"])
         if mapping is None:
             mapping = {"display_name": info["name"], "description": ""}
-        info.setdefault("display_name", mapping["display_name"])
+        info["display_name"] = mapping["display_name"]
         info["description"] = mapping["description"]
         tags.extend(mapping.get("tags") or [])
         out[key] = info
@@ -476,6 +475,46 @@ JINJA_ENV = Environment(
     loader=PackageLoader("julio", package_path=""),
     autoescape=select_autoescape(),
 )
+
+
+def _added_on(ds: dl.Dataset) -> dict[str, str]:
+    """Get when the features were added to the registry, from git.
+
+    Parameters
+    ----------
+    ds : dl.Dataset
+        Dataset of the registry.
+
+    Returns
+    -------
+    dict
+        When each feature was added (MD5 -> date in UTC), for the features
+        that are committed.
+
+    """
+    out = {}
+    added = None
+    # The newest commits first, with the files they added
+    for line in ds.repo.call_git(
+        [
+            "log",
+            "--diff-filter=A",
+            "--format=@%at",
+            "--name-only",
+            "--",
+            "features",
+        ]
+    ).splitlines():
+        if line.startswith("@"):
+            added = dt.datetime.fromtimestamp(int(line[1:]), tz=dt.UTC)
+        elif line.endswith("-meta.yaml") and added is not None:
+            md5 = (
+                Path(line)
+                .name.removeprefix("feature-")
+                .removesuffix("-meta.yaml")
+            )
+            out.setdefault(md5, added.strftime("%Y-%m-%d %H:%M:%S"))
+    return out
 
 
 def build_site(output: Path, ds: dl.Dataset) -> None:
@@ -504,6 +543,9 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
     for f in sorted(glob.iglob(str((feature_dir / "*-meta.yaml").resolve()))):
         with Path(f).open("r") as stream:
             fs.append(_apply_mappings(yaml.load(stream), mappings))
+    added_on = _added_on(ds)
+    for f in fs:
+        f["added_on"] = added_on.get(f["md5"], "")
     # Load templates
     tem_idx = JINJA_ENV.get_template("index.html")
     tem_feature = JINJA_ENV.get_template("feature.html")

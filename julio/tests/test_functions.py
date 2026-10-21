@@ -5,6 +5,7 @@
 
 import html
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -368,6 +369,22 @@ def test_build(tmp_path: Path) -> None:
         # Without origin, the local path is used to clone
         assert f"datalad clone {registry_path.resolve()!s} registry" in page
         assert f"datalad get features/feature-{md5}.hdf5" in page
+    # When the features were added, from git
+    added_on = subprocess.run(
+        [
+            "git",
+            "log",
+            "-1",
+            "--format=%ad",
+            "--date=format-local:%Y-%m-%d %H:%M:%S",
+        ],
+        cwd=registry_path,
+        capture_output=True,
+        check=True,
+        text=True,
+        env={**os.environ, "TZ": "UTC"},
+    ).stdout.strip()
+    assert index.count(f"<td>{added_on}</td>") == len(md5s)
     # The registry is not changed
     assert not dl.Dataset(registry_path).repo.dirty
 
@@ -521,9 +538,6 @@ def test_apply_mappings() -> None:
         "dataset": {"name": "DG"},
         "marker": {"name": "M"},
     }
-    # The display name given when adding takes precedence
-    meta["dataset"]["display_name"] = "Mine"
-    assert _apply_mappings(meta, mappings)["dataset"]["display_name"] == "Mine"
     # Not in the mappings, or without mappings
     for t_mappings in (mappings, {"datagrabbers": None}):
         out = _apply_mappings(
