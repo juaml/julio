@@ -21,11 +21,33 @@ from junifer.api import generate_yaml
 from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 
-from julio import add, build, create
-from julio._utils import _apply_mappings, _data_info, _generate_meta_yaml
+from julio import add, build, create, publish
+from julio._utils import (
+    CI_FILES,
+    _apply_mappings,
+    _data_info,
+    _generate_meta_yaml,
+    _public_url,
+)
 
 
 TESTS_DIR = Path(__file__).parent
+
+
+@pytest.fixture(autouse=True)
+def env_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Add the scripts of the environment (e.g., datalad's) to PATH.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest fixture to modify the environment.
+
+    """
+    monkeypatch.setenv(
+        "PATH",
+        f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}",
+    )
 
 
 def test_create(tmp_path: Path) -> None:
@@ -418,8 +440,6 @@ def test_build_remote(tmp_path: Path) -> None:
             if args[0] == "cd":
                 cwd = cwd / args[1]
             else:
-                # datalad of the environment, which might not be in PATH
-                args[0] = str(Path(sys.executable).parent / args[0])
                 subprocess.run(args, cwd=cwd, check=True, capture_output=True)
         code = re.search(r"language-python[^>]*>(.*?)</code>", page, re.DOTALL)
         assert code is not None
@@ -551,3 +571,237 @@ def test_apply_mappings() -> None:
         }
         assert out["marker"]["display_name"] == "N"
         assert out["tags"] == []
+
+
+def _read_published_feature(clone_url: str, path: Path, md5: str) -> None:
+    """Clone a published registry and check the data of a feature.
+
+    Parameters
+    ----------
+    clone_url : str
+        URL to clone the registry from.
+    path : Path
+        Path to clone the registry to.
+    md5 : str
+        MD5 of the feature to check.
+
+    """
+    ds = dl.clone(source=clone_url, path=path, result_renderer="disabled")
+    feature_path = f"features/feature-{md5}.hdf5"
+    ds.get(feature_path, result_renderer="disabled")
+    source = HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5")
+    pd.testing.assert_frame_equal(
+        HDF5FeatureStorage(uri=path / feature_path).read_df(feature_md5=md5),
+        source.read_df(feature_md5=md5),
+    )
+
+
+def test_publish_ria(tmp_path: Path) -> None:
+    """Test registry publishing to a RIA store.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    store_url = f"ria+{(tmp_path / 'store').as_uri()}"
+    assert publish(registry_path, store_url) == "origin"
+    md5 = next(
+        iter(HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features())
+    )
+    ds_id = dl.Dataset(registry_path).id
+    _read_published_feature(f"{store_url}#{ds_id}", tmp_path / "user", md5)
+    # The site uses the published registry to clone it
+    build(output=tmp_path / "build", registry_path=registry_path)
+    page = (tmp_path / "build" / f"{md5}.html").read_text()
+    assert str(registry_path.resolve()) not in page
+    # Publishing again to the same URL uses the sibling
+    assert publish(registry_path, store_url) == "origin"
+
+
+def test_publish_sibling(tmp_path: Path) -> None:
+    """Test registry publishing to an existing sibling.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = tmp_path / "test_registry"
+    create(registry_path)
+    # Allow pushing to the checked out branch of the "remote"
+    subprocess.run(
+        ["git", "config", "receive.denyCurrentBranch", "updateInstead"],
+        cwd=registry_path,
+        check=True,
+    )
+    local_path = tmp_path / "local"
+    dl.clone(source=registry_path, path=local_path, result_renderer="disabled")
+    add(
+        yaml_path=TESTS_DIR / "valid.yaml",
+        registry_path=local_path,
+    )
+    assert publish(local_path, "origin") == "origin"
+    md5 = next(
+        iter(HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features())
+    )
+    # The data is in the remote, not only the metadata
+    assert (registry_path / "features" / f"feature-{md5}-meta.yaml").is_file()
+    _read_published_feature(str(registry_path), tmp_path / "user", md5)
+
+
+def test_publish_name(tmp_path: Path) -> None:
+    """Test registry publishing to a new URL with a sibling name.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    first_url = f"ria+{(tmp_path / 'first').as_uri()}"
+    second_url = f"ria+{(tmp_path / 'second').as_uri()}"
+    assert publish(registry_path, first_url) == "origin"
+    with pytest.raises(RuntimeError, match="already exists"):
+        publish(registry_path, second_url)
+    assert publish(registry_path, second_url, name="backup") == "backup"
+    md5 = next(
+        iter(HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features())
+    )
+    ds_id = dl.Dataset(registry_path).id
+    _read_published_feature(f"{second_url}#{ds_id}", tmp_path / "user", md5)
+
+
+def test_publish_invalid(tmp_path: Path) -> None:
+    """Test registry publishing with invalid registries and remotes.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    with pytest.raises(RuntimeError, match="not a julio registry"):
+        publish(tmp_path, "origin")
+    registry_path = tmp_path / "test_registry"
+    create(registry_path)
+    # Not a valid URL for a RIA store
+    with pytest.raises(RuntimeError, match="Failed to add sibling"):
+        publish(registry_path, "ria+invalid://store")
+    # Nothing to push to
+    with pytest.raises(RuntimeError, match="Failed to push"):
+        publish(registry_path, str(tmp_path / "missing"))
+
+
+@pytest.mark.parametrize("ci", ["github", "gitlab", "forgejo"])
+def test_publish_ci(tmp_path: Path, ci: str) -> None:
+    """Test registry publishing with the CI to build the site.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+    ci : str
+        The parametrized kind of CI.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    ds = dl.Dataset(registry_path)
+    branch = ds.repo.get_active_branch()
+    store_url = f"ria+{(tmp_path / 'store').as_uri()}"
+    n_commits = _n_commits(registry_path)
+    publish(registry_path, store_url, ci=ci)
+    assert _n_commits(registry_path) == n_commits + 1
+    assert not ds.repo.dirty
+    ci_path = registry_path / CI_FILES[ci][1]
+    content = ci_path.read_text()
+    assert "__julio_branch__" not in content
+    config = yaml.load(ci_path)
+    # Built on each push to the current branch
+    if ci == "gitlab":
+        assert config["pages"]["rules"] == [
+            {"if": f'$CI_COMMIT_BRANCH == "{branch}"'}
+        ]
+    else:
+        assert config["on"]["push"]["branches"] == [branch]
+    # Again, nothing to add
+    publish(registry_path, "origin", ci=ci)
+    assert _n_commits(registry_path) == n_commits + 1
+    # The build of the CI, in a git clone of the published registry as the
+    # forges do, with the token of the job in the URL as GitLab does
+    checkout = tmp_path / "checkout"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(registry_path), str(checkout)],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "remote",
+            "set-url",
+            "origin",
+            "https://ci-token:SECRET@forge.example.org/lab/registry.git",
+        ],
+        cwd=checkout,
+        check=True,
+    )
+    command = next(
+        line.strip().removeprefix("- ").removeprefix("run: ")
+        for line in content.splitlines()
+        if "julio build" in line
+    )
+    subprocess.run(command.split(), cwd=checkout, check=True)
+    output = checkout / command.split()[-1]
+    assert (output / "index.html").is_file()
+    for page in output.glob("*.html"):
+        text = page.read_text()
+        assert "SECRET" not in text
+    md5 = next(
+        iter(HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features())
+    )
+    page = (output / f"{md5}.html").read_text()
+    assert (
+        "datalad clone https://forge.example.org/lab/registry.git registry"
+        in page
+    )
+
+
+def test_publish_ci_existing(tmp_path: Path) -> None:
+    """Test registry publishing with another CI configuration in the path.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = tmp_path / "test_registry"
+    create(registry_path)
+    ci_path = registry_path / ".gitlab-ci.yml"
+    ci_path.write_text("test:\n  script:\n    - pytest\n")
+    dl.Dataset(registry_path).save(result_renderer="disabled")
+    store_url = f"ria+{(tmp_path / 'store').as_uri()}"
+    with pytest.raises(RuntimeError, match="already exists"):
+        publish(registry_path, store_url, ci="gitlab")
+    assert ci_path.read_text() == "test:\n  script:\n    - pytest\n"
+
+
+def test_public_url() -> None:
+    """Test removing the credentials from URLs."""
+    assert (
+        _public_url("https://gitlab-ci-token:abc@gitlab.com/g/r.git")
+        == "https://gitlab.com/g/r.git"
+    )
+    assert _public_url("https://user@host:8080/r") == "https://host:8080/r"
+    for url in (
+        "https://github.com/o/r",
+        "git@github.com:o/r.git",
+        "ssh://git@host/r",
+        "/path/to/registry",
+        "ria+file:///store#id",
+    ):
+        assert _public_url(url) == url

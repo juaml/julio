@@ -1,0 +1,45 @@
+# Build the julio site of the registry on each push to __julio_branch__ and
+# push it to the `pages` branch of the repository, served by the pages server
+# of the Forgejo instance (e.g., https://<owner>.codeberg.page/<repository>/ in
+# Codeberg). Added by `julio publish --ci forgejo`.
+#
+# Enable Actions in the settings of the repository (Settings > Units >
+# Actions).
+name: julio site
+
+on:
+  push:
+    branches:
+      - __julio_branch__
+  workflow_dispatch:
+
+jobs:
+  site:
+    # The label of a runner of the instance that runs containers, e.g.,
+    # "docker", or "codeberg-tiny" in Codeberg
+    runs-on: docker
+    container:
+      image: python:3.13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, to know when the features were added
+          fetch-depth: 0
+      - name: Install git-annex and julio
+        run: |
+          apt-get update
+          apt-get install -y git-annex
+          # Pin the version (e.g., julio==X.Y.Z) to build the site always the
+          # same way
+          python -m pip install julio
+      - name: Build the site
+        run: julio build --registry . --output _site
+      - name: Push the site to the pages branch
+        run: |
+          cd _site
+          git init --quiet --initial-branch pages
+          git add --all
+          git -c user.name=julio -c user.email=julio@localhost \
+            commit --quiet --message "julio site for ${{ github.sha }}"
+          git -c http.extraHeader="Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            push --force "${{ github.server_url }}/${{ github.repository }}.git" pages
