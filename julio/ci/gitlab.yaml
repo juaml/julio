@@ -1,0 +1,19 @@
+# Build the julio site of the registry and deploy it to GitLab Pages on each
+# push to __julio_branch__. Added by `julio publish --ci gitlab`.
+pages:
+  image: python:3.13
+  variables:
+    # The whole history, to know when the features were added
+    GIT_DEPTH: "0"
+  script:
+    - apt-get update
+    - apt-get install -y git-annex
+    # Pin the version (e.g., julio==X.Y.Z) to build the site always the same
+    # way
+    - python -m pip install julio
+    - julio build --registry . --output public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == "__julio_branch__"

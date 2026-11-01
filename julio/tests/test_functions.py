@@ -22,7 +22,13 @@ from junifer.storage import HDF5FeatureStorage
 from junifer.utils import yaml
 
 from julio import add, build, create, publish
-from julio._utils import _apply_mappings, _data_info, _generate_meta_yaml
+from julio._utils import (
+    CI_FILES,
+    _apply_mappings,
+    _data_info,
+    _generate_meta_yaml,
+    _public_url,
+)
 
 
 TESTS_DIR = Path(__file__).parent
@@ -689,3 +695,113 @@ def test_publish_invalid(tmp_path: Path) -> None:
     # Nothing to push to
     with pytest.raises(RuntimeError, match="Failed to push"):
         publish(registry_path, str(tmp_path / "missing"))
+
+
+@pytest.mark.parametrize("ci", ["github", "gitlab", "forgejo"])
+def test_publish_ci(tmp_path: Path, ci: str) -> None:
+    """Test registry publishing with the CI to build the site.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+    ci : str
+        The parametrized kind of CI.
+
+    """
+    registry_path = _registry_with_features(tmp_path)
+    ds = dl.Dataset(registry_path)
+    branch = ds.repo.get_active_branch()
+    store_url = f"ria+{(tmp_path / 'store').as_uri()}"
+    n_commits = _n_commits(registry_path)
+    publish(registry_path, store_url, ci=ci)
+    assert _n_commits(registry_path) == n_commits + 1
+    assert not ds.repo.dirty
+    ci_path = registry_path / CI_FILES[ci][1]
+    content = ci_path.read_text()
+    assert "__julio_branch__" not in content
+    config = yaml.load(ci_path)
+    # Built on each push to the current branch
+    if ci == "gitlab":
+        assert config["pages"]["rules"] == [
+            {"if": f'$CI_COMMIT_BRANCH == "{branch}"'}
+        ]
+    else:
+        assert config["on"]["push"]["branches"] == [branch]
+    # Again, nothing to add
+    publish(registry_path, "origin", ci=ci)
+    assert _n_commits(registry_path) == n_commits + 1
+    # The build of the CI, in a git clone of the published registry as the
+    # forges do, with the token of the job in the URL as GitLab does
+    checkout = tmp_path / "checkout"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(registry_path), str(checkout)],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "remote",
+            "set-url",
+            "origin",
+            "https://ci-token:SECRET@forge.example.org/lab/registry.git",
+        ],
+        cwd=checkout,
+        check=True,
+    )
+    command = next(
+        line.strip().removeprefix("- ").removeprefix("run: ")
+        for line in content.splitlines()
+        if "julio build" in line
+    )
+    subprocess.run(command.split(), cwd=checkout, check=True)
+    output = checkout / command.split()[-1]
+    assert (output / "index.html").is_file()
+    for page in output.glob("*.html"):
+        text = page.read_text()
+        assert "SECRET" not in text
+    md5 = next(
+        iter(HDF5FeatureStorage(uri=TESTS_DIR / "store.hdf5").list_features())
+    )
+    page = (output / f"{md5}.html").read_text()
+    assert (
+        "datalad clone https://forge.example.org/lab/registry.git registry"
+        in page
+    )
+
+
+def test_publish_ci_existing(tmp_path: Path) -> None:
+    """Test registry publishing with another CI configuration in the path.
+
+    Parameters
+    ----------
+    tmp_path : Path
+        Pytest fixture that provides a temporary directory.
+
+    """
+    registry_path = tmp_path / "test_registry"
+    create(registry_path)
+    ci_path = registry_path / ".gitlab-ci.yml"
+    ci_path.write_text("test:\n  script:\n    - pytest\n")
+    dl.Dataset(registry_path).save(result_renderer="disabled")
+    store_url = f"ria+{(tmp_path / 'store').as_uri()}"
+    with pytest.raises(RuntimeError, match="already exists"):
+        publish(registry_path, store_url, ci="gitlab")
+    assert ci_path.read_text() == "test:\n  script:\n    - pytest\n"
+
+
+def test_public_url() -> None:
+    """Test removing the credentials from URLs."""
+    assert (
+        _public_url("https://gitlab-ci-token:abc@gitlab.com/g/r.git")
+        == "https://gitlab.com/g/r.git"
+    )
+    assert _public_url("https://user@host:8080/r") == "https://host:8080/r"
+    for url in (
+        "https://github.com/o/r",
+        "git@github.com:o/r.git",
+        "ssh://git@host/r",
+        "/path/to/registry",
+        "ria+file:///store#id",
+    ):
+        assert _public_url(url) == url

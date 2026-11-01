@@ -54,6 +54,31 @@ Publish the registry to a sibling, a RIA store (with the data) or a git URL:
 julio publish --registry my-registry --remote ria+ssh://server/path/to/store
 ```
 
+To build and deploy the site on each push to the current branch (e.g.,
+`main`) of a registry hosted in GitHub, GitLab or Forgejo (e.g., Codeberg), add
+the CI configuration when publishing it:
+
+```
+julio publish --registry my-registry --remote git@github.com:lab/registry.git --ci github
+```
+
+| `--ci`    | Configuration                        | Site                         |
+|-----------|--------------------------------------|------------------------------|
+| `github`  | `.github/workflows/julio-site.yaml`  | GitHub Pages                 |
+| `gitlab`  | `.gitlab-ci.yml`                     | GitLab Pages                 |
+| `forgejo` | `.forgejo/workflows/julio-site.yaml` | the `pages` branch           |
+
+- GitHub: set "GitHub Actions" as the source of GitHub Pages in the settings of
+  the repository.
+- Forgejo: enable Actions in the settings of the repository, and set the label
+  of a runner of the instance in `runs-on` (e.g., `codeberg-tiny` in
+  Codeberg).
+- The CI installs the latest julio release; pin it in the configuration to
+  build the site always the same way.
+
+The forges only host the git repository: publish the data (the HDF5 files) to
+a RIA store or another special remote too, so that it can be downloaded.
+
 Build the static site to find and download the features:
 
 ```

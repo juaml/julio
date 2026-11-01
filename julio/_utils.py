@@ -11,6 +11,7 @@ import shutil
 from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit, urlunsplit
 
 import click
 import datalad.api as dl
@@ -27,7 +28,13 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-__all__ = ["PathOrURL", "is_julio_registry", "process_features"]
+__all__ = [
+    "CI_FILES",
+    "PathOrURL",
+    "add_ci",
+    "is_julio_registry",
+    "process_features",
+]
 
 logger = structlog.get_logger()
 
@@ -117,6 +124,69 @@ class PathOrURLParamType(click.ParamType):  # pragma: no cover
 
 
 PathOrURL = PathOrURLParamType()
+
+
+# The CI configuration to build the site, by kind: the template in julio and
+# its path in the registry
+CI_FILES = {
+    "github": ("github.yaml", ".github/workflows/julio-site.yaml"),
+    "gitlab": ("gitlab.yaml", ".gitlab-ci.yml"),
+    "forgejo": ("forgejo.yaml", ".forgejo/workflows/julio-site.yaml"),
+}
+
+
+def add_ci(ds: dl.Dataset, ci: str) -> bool:
+    """Add the CI configuration to build the site to the registry.
+
+    The site is built on each push to the current branch of the registry.
+
+    Parameters
+    ----------
+    ds : dl.Dataset
+        Dataset of the registry.
+    ci : {"github", "gitlab", "forgejo"}
+        The kind of CI.
+
+    Returns
+    -------
+    bool
+        Whether the configuration was added (False if it already was).
+
+    Raises
+    ------
+    RuntimeError
+        If the registry has no current branch or
+        if it has another configuration in the same path.
+
+    """
+    template, ci_path = CI_FILES[ci]
+    branch = ds.repo.get_active_branch()
+    if branch is None:
+        raise RuntimeError(
+            f"Registry at {ds.path} has no current branch to build the site "
+            "from"
+        )
+    content = (
+        (Path(__file__).parent / "ci" / template)
+        .read_text()
+        .replace("__julio_branch__", branch)
+    )
+    path = ds.pathobj / ci_path
+    if path.exists():
+        if path.read_text() == content:
+            return False
+        raise RuntimeError(
+            f"{path} already exists: remove it to add the {ci} CI of julio"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+    ds.save(
+        path=path,
+        message=f"[julio] add {ci} CI to build the site",
+        on_failure="stop",
+        result_renderer="disabled",
+    )
+    return True
 
 
 def is_julio_registry(ds: dl.Dataset) -> bool:
@@ -517,6 +587,29 @@ def _added_on(ds: dl.Dataset) -> dict[str, str]:
     return out
 
 
+def _public_url(url: str) -> str:
+    """Remove the credentials from a URL.
+
+    E.g., GitLab CI clones with the token of the job in the URL of origin.
+
+    Parameters
+    ----------
+    url : str
+        The URL.
+
+    Returns
+    -------
+    str
+        The URL, without user and password.
+
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or "@" not in parts.netloc:
+        return url
+    netloc = parts.netloc.rsplit("@", 1)[1]
+    return urlunsplit(parts._replace(netloc=netloc))
+
+
 def build_site(output: Path, ds: dl.Dataset) -> None:
     """Build the static site.
 
@@ -553,7 +646,7 @@ def build_site(output: Path, ds: dl.Dataset) -> None:
     clone_url = None
     for s in dl.siblings(dataset=ds, result_renderer="disabled"):
         if s["name"] == "origin":
-            clone_url = s["url"]
+            clone_url = _public_url(s["url"])
             break
     if clone_url is None:
         log.warning(

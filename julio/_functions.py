@@ -11,7 +11,7 @@ import datalad.api as dl
 import structlog
 from datalad.support.exceptions import CommandError, IncompleteResultsError
 
-from ._utils import build_site, is_julio_registry, process_features
+from ._utils import add_ci, build_site, is_julio_registry, process_features
 
 
 __all__ = ["add", "build", "create", "publish"]
@@ -190,6 +190,7 @@ def publish(
     registry_path: Path,
     remote: str,
     name: str | None = None,
+    ci: str | None = None,
 ) -> str:
     """Publish the registry at `registry_path` to `remote`.
 
@@ -204,6 +205,11 @@ def publish(
     name : str or None, optional
         Name of the sibling to add, if ``remote`` is a new URL. If None,
         ``origin`` is used, if the registry does not have it (default None).
+    ci : {"github", "gitlab", "forgejo"} or None, optional
+        The CI configuration to add to the registry, to build the site and
+        deploy it to the pages of the forge (GitHub Pages, GitLab Pages or the
+        ``pages`` branch for Forgejo) on each push to the current branch. If
+        None, no CI configuration is added (default None).
 
     Returns
     -------
@@ -214,6 +220,7 @@ def publish(
     ------
     RuntimeError
         If the dataset is not a julio registry,
+        if the CI configuration cannot be added,
         if the sibling cannot be added or
         if there is a problem pushing to it.
 
@@ -265,6 +272,8 @@ def publish(
                 )
         except IncompleteResultsError as e:
             raise RuntimeError(f"Failed to add sibling: {e.failed}") from e
+    if ci is not None and add_ci(ds, ci):
+        log.debug(f"Added {ci} CI to build the site")
     log.debug(f"Publishing registry to `{sibling}`")
     try:
         ds.push(

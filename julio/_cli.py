@@ -269,11 +269,21 @@ def build(
     metavar="<name>",
     help="Name of the sibling to add for a new URL; if not passed, `origin`",
 )
+@click.option(
+    "--ci",
+    default=None,
+    type=click.Choice(["github", "gitlab", "forgejo"]),
+    help=(
+        "Add the CI configuration to build and deploy the site on each push "
+        "to the current branch"
+    ),
+)
 @click.option("-v", "--verbose", count=True, type=int)
 def publish(
     registry: click.Path,
     remote: str,
     name: str,
+    ci: str,
     verbose: int,
 ) -> None:
     """Publish feature(s) registry."""
@@ -283,6 +293,7 @@ def publish(
             registry_path=registry if registry is not None else Path("."),
             remote=remote,
             name=name,
+            ci=ci,
         )
     except RuntimeError as err:
         raise click.ClickException(str(err)) from err

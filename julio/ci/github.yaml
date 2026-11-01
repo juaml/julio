@@ -1,0 +1,55 @@
+# Build the julio site of the registry and deploy it to GitHub Pages on each
+# push to __julio_branch__. Added by `julio publish --ci github`.
+#
+# Set "GitHub Actions" as the source of GitHub Pages in the settings of the
+# repository (Settings > Pages > Build and deployment).
+name: julio site
+
+on:
+  push:
+    branches:
+      - __julio_branch__
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history, to know when the features were added
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install git-annex and julio
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-annex
+          # Pin the version (e.g., julio==X.Y.Z) to build the site always the
+          # same way
+          python -m pip install julio
+      - name: Build the site
+        run: julio build --registry . --output _site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
